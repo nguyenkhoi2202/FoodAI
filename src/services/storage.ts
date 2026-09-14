@@ -7,11 +7,11 @@ const STORAGE_KEYS = {
 };
 
 const ENV_KEY = (import.meta.env.VITE_GEMINI_API_KEY || '').trim();
-const ENV_MODEL = (import.meta.env.VITE_GEMINI_MODEL || 'gemini-3.8-flash').trim();
+const ENV_MODEL = (import.meta.env.VITE_GEMINI_MODEL || 'gemini-2.0-flash').trim();
 
 export const DEFAULT_CONFIG: AppConfig = {
   apiKey: ENV_KEY,
-  model: ENV_MODEL || 'gemini-3.8-flash',
+  model: ENV_MODEL || 'gemini-2.0-flash',
   isConfigured: Boolean(ENV_KEY && ENV_KEY.length > 10),
 };
 
@@ -23,9 +23,9 @@ export const getStoredConfig = (): AppConfig => {
     }
     const parsed = JSON.parse(raw);
     const apiKey = parsed.apiKey || DEFAULT_CONFIG.apiKey || '';
-    let model = parsed.model || DEFAULT_CONFIG.model || 'gemini-3.8-flash';
+    let model = parsed.model || DEFAULT_CONFIG.model || 'gemini-2.0-flash';
     if (model === 'gemini-2.5-flash') {
-      model = DEFAULT_CONFIG.model || 'gemini-3.8-flash';
+      model = 'gemini-2.0-flash';
     }
     return {
       apiKey,

@@ -31,27 +31,27 @@ interface AdminPageProps {
 const PRESET_MODELS = [
   {
     id: 'gemini-2.0-flash',
-    name: 'Gemini 2.0 Flash (Khuyên dùng)',
-    description: 'Thế hệ mới nhất của Google, cực nhanh, thông minh & dồi dào hạn mức',
-    tag: 'Mới nhất',
+    name: 'Gemini 2.0 Flash (Khuyên Dùng Tốt Nhất)',
+    description: '1.500 lượt hỏi/ngày miễn phí, tốc độ siêu nhanh, thông minh & phản hồi công thức cực chuẩn',
+    tag: 'Tối ưu nhất',
   },
   {
     id: 'gemini-1.5-flash',
-    name: 'Gemini 1.5 Flash (Rất ổn định)',
-    description: 'Mô hình tiêu chuẩn toàn cầu của Google, nhẹ và phản hồi ngay lập tức',
-    tag: 'Ổn định',
+    name: 'Gemini 1.5 Flash (Rất Ổn Định)',
+    description: '1.500 lượt hỏi/ngày miễn phí, chuẩn hóa toàn cầu, nhẹ và cực kỳ bền bỉ',
+    tag: '1.500 lượt/ngày',
   },
   {
     id: 'gemini-1.5-pro',
-    name: 'Gemini 1.5 Pro (Nâng cao)',
-    description: 'Suy luận ẩm thực chuyên sâu, công thức cầu kỳ chi tiết',
+    name: 'Gemini 1.5 Pro (Đầu Bếp Chuyên Sâu)',
+    description: 'Suy luận ẩm thực chuyên sâu, công thức cầu kỳ chi tiết (50 lượt/ngày)',
     tag: 'Chuyên sâu',
   },
   {
     id: 'gemini-3.8-flash',
-    name: 'Gemini 3.8 Flash',
-    description: 'Mô hình thế hệ 3.x với khả năng suy nghĩ reasoning chuyên sâu',
-    tag: 'Next Gen',
+    name: 'Gemini 3.8 Flash (Bản Thử Nghiệm)',
+    description: 'Thế hệ 3.x với thinking tokens (Lưu ý: Google chỉ cho 20 lượt hỏi/ngày ở bản miễn phí)',
+    tag: 'Giới hạn 20 lượt/ngày',
   },
 ];
 

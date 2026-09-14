@@ -209,6 +209,101 @@ function formatPreferencesPrompt(pref: UserPreferences): string {
 }
 
 /**
+ * Execute a Gemini generateContent call with automatic fallback models
+ * If the configured model hits 429 quota / rate limit (e.g. limit: 20 on preview models like gemini-3.6-flash),
+ * it seamlessly tries gemini-2.0-flash or gemini-1.5-flash to ensure user gets their dish!
+ */
+export async function callGeminiWithModelFallback(
+  prompt: string,
+  initialModel: string,
+  apiKey: string,
+  maxOutputTokens: number = 3500
+): Promise<string> {
+  const cleanInitial = initialModel.trim().replace(/^models\//, '');
+  const candidateModels = [cleanInitial, 'gemini-2.0-flash', 'gemini-1.5-flash'];
+  // Keep unique candidates in original preference order
+  const modelsToTry = candidateModels.filter((m, idx) => candidateModels.indexOf(m) === idx);
+
+  let lastError: Error = new Error('Không thể kết nối đến máy chủ Google AI');
+
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const currentModel = modelsToTry[i];
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey.trim()}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        const msg = errBody?.error?.message || `Lỗi HTTP ${response.status} (${response.statusText})`;
+
+        const isQuotaOrLimit =
+          response.status === 429 ||
+          msg.toLowerCase().includes('quota') ||
+          msg.toLowerCase().includes('rate limit') ||
+          msg.toLowerCase().includes('resource_exhausted') ||
+          msg.includes('limit:') ||
+          msg.includes('not found') ||
+          msg.includes('no longer available');
+
+        if (isQuotaOrLimit && i < modelsToTry.length - 1) {
+          console.warn(
+            `Model "${currentModel}" chạm giới hạn Quota (${msg}). Đang tự động thử chuyển sang "${modelsToTry[i + 1]}"...`
+          );
+          lastError = new Error(msg);
+          continue;
+        }
+
+        throw new Error(msg);
+      }
+
+      const data = await response.json();
+      const text = extractTextFromResponse(data);
+      if (!text) {
+        if (i < modelsToTry.length - 1) {
+          continue;
+        }
+        throw new Error('Máy chủ Google AI không trả về nội dung hợp lệ.');
+      }
+
+      return text;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      const msg = lastError.message;
+      const isQuotaOrLimit =
+        msg.toLowerCase().includes('quota') ||
+        msg.toLowerCase().includes('rate limit') ||
+        msg.toLowerCase().includes('resource_exhausted') ||
+        msg.includes('limit:') ||
+        msg.includes('not found') ||
+        msg.includes('no longer available');
+
+      if (isQuotaOrLimit && i < modelsToTry.length - 1) {
+        console.warn(
+          `Model "${currentModel}" gặp sự cố (${msg}). Tự động thử model dự phòng "${modelsToTry[i + 1]}"...`
+        );
+        continue;
+      }
+
+      if (i === modelsToTry.length - 1) {
+        throw lastError;
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+/**
  * Generate food suggestion based on user preferences using Gemini API
  */
 export async function suggestMealFromGemini(pref: UserPreferences): Promise<SuggestedDish> {
@@ -218,7 +313,6 @@ export async function suggestMealFromGemini(pref: UserPreferences): Promise<Sugg
     throw new Error('Chưa cấu hình API Key Google Gemini. Vui lòng thêm VITE_GEMINI_API_KEY trong file .env hoặc cấu hình trên Vercel.');
   }
 
-  const cleanModel = config.model.trim().replace(/^models\//, '');
   const prompt = `
 Bạn là Siêu Trợ Lý Đầu Bếp AI & Chuyên gia Văn Hóa Ẩm Thực Việt Nam "Hôm Nay Ăn Gì".
 Người dùng đang rất phân vân không biết nấu gì, ăn gì và cần bạn quyết định thay cho họ một thực đơn hoàn hảo!
@@ -267,39 +361,7 @@ BẠN PHẢI TRẢ VỀ KẾT QUẢ DƯỚI DẠNG JSON CHUẨN (KHÔNG CHỨA B
 `.trim();
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${config.apiKey.trim()}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 3500,
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      const errBody = await response.json().catch(() => ({}));
-      const msg = errBody?.error?.message || `Lỗi HTTP ${response.status} (${response.statusText})`;
-      console.error('Gemini API Error:', msg);
-      throw new Error(msg);
-    }
-
-    const data = await response.json();
-    const candidateText = extractTextFromResponse(data);
-    if (!candidateText) {
-      throw new Error('Máy chủ Google AI không trả về nội dung hợp lệ.');
-    }
-
+    const candidateText = await callGeminiWithModelFallback(prompt, config.model, config.apiKey, 3500);
     const parsed = parseJsonFromGemini(candidateText);
     return {
       ...parsed,
@@ -324,7 +386,6 @@ export async function suggestMealFromFridge(
     throw new Error('Chưa cấu hình API Key Google Gemini. Vui lòng thêm VITE_GEMINI_API_KEY trong file .env hoặc cấu hình trên Vercel.');
   }
 
-  const cleanModel = config.model.trim().replace(/^models\//, '');
   const prompt = `
 Bạn là Siêu Trợ Lý Bếp Trưởng AI "Hôm Nay Ăn Gì".
 Người dùng muốn dọn tủ lạnh và đang có sẵn các nguyên liệu sau: ${ingredients.join(', ')}.
@@ -370,30 +431,7 @@ TRẢ VỀ JSON DUY NHẤT VỚI CẤU TRÚC:
 `.trim();
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${config.apiKey.trim()}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 3000,
-        },
-      }),
-    });
-
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      const msg = errBody?.error?.message || `Lỗi HTTP ${res.status}`;
-      throw new Error(msg);
-    }
-
-    const data = await res.json();
-    const text = extractTextFromResponse(data);
-    if (!text) {
-      throw new Error('Máy chủ Google AI không trả về nội dung hợp lệ.');
-    }
+    const text = await callGeminiWithModelFallback(prompt, config.model, config.apiKey, 3000);
     return { ...parseJsonFromGemini(text), id: 'fridge-' + Date.now() };
   } catch (err) {
     console.error('Gemini Fridge error:', err);
@@ -414,7 +452,6 @@ export async function suggestRecipeForSpecificDish(
     throw new Error('Chưa cấu hình API Key Google Gemini. Vui lòng thêm VITE_GEMINI_API_KEY trong file .env hoặc cấu hình trên Vercel.');
   }
 
-  const cleanModel = config.model.trim().replace(/^models\//, '');
   const prompt = `
 Bạn là Đầu Bếp AI chuyên nghiệp.
 Người dùng vừa chọn món: "${dishName}" cho ${peopleCount} người ăn.
@@ -459,30 +496,7 @@ TRẢ VỀ JSON DUY NHẤT CÓ CẤU TRÚC:
 `.trim();
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${config.apiKey.trim()}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 3000,
-        },
-      }),
-    });
-
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      const msg = errBody?.error?.message || `Lỗi HTTP ${res.status}`;
-      throw new Error(msg);
-    }
-
-    const data = await res.json();
-    const text = extractTextFromResponse(data);
-    if (!text) {
-      throw new Error('Máy chủ Google AI không trả về nội dung hợp lệ.');
-    }
+    const text = await callGeminiWithModelFallback(prompt, config.model, config.apiKey, 3000);
     return { ...parseJsonFromGemini(text), id: 'dish-' + Date.now() };
   } catch (err) {
     console.error('Gemini dish error:', err);
@@ -536,7 +550,6 @@ export async function suggestMealForDiet(pref: DietPreferences): Promise<Suggest
     throw new Error('Chưa cấu hình API Key Google Gemini. Vui lòng thêm VITE_GEMINI_API_KEY trong file .env hoặc cấu hình trên Vercel.');
   }
 
-  const cleanModel = config.model.trim().replace(/^models\//, '');
   const prompt = `
 Bạn là Chuyên Gia Dinh Dưỡng & Đầu Bếp Eat Clean Chuyên Sâu.
 Người dùng đang trong chế độ ĂN KIÊNG / GIẢM CÂN / GIỮ DÁNG và cần bạn lên 1 bữa ăn khoa học:
@@ -592,30 +605,7 @@ TRẢ VỀ JSON DUY NHẤT VỚI CẤU TRÚC:
 `.trim();
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${config.apiKey.trim()}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 3000,
-        },
-      }),
-    });
-
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      const msg = errBody?.error?.message || `Lỗi HTTP ${res.status}`;
-      throw new Error(msg);
-    }
-
-    const data = await res.json();
-    const text = extractTextFromResponse(data);
-    if (!text) {
-      throw new Error('Máy chủ Google AI không trả về nội dung hợp lệ.');
-    }
+    const text = await callGeminiWithModelFallback(prompt, config.model, config.apiKey, 3000);
     return { ...parseJsonFromGemini(text), id: 'diet-' + Date.now() };
   } catch (err) {
     console.error('Gemini Diet error:', err);
