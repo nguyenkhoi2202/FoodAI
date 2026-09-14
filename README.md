@@ -54,15 +54,35 @@ Một ứng dụng web thông minh hỗ trợ giải quyết câu hỏi muôn th
 
 ### Cài Đặt:
 ```bash
-# Cài đặt dependencies
+# 1. Clone dự án và cài đặt dependencies
 npm install
 
-# Chạy môi trường phát triển (Dev)
+# 2. Cấu hình biến môi trường (.env)
+cp .env.example .env
+# Mở file .env và điền VITE_GEMINI_API_KEY của bạn
+
+# 3. Chạy môi trường phát triển (Dev)
 npm run dev
 
-# Build sản phẩm hoàn chỉnh (Production)
+# 4. Build sản phẩm hoàn chỉnh (Production)
 npm run build
 ```
+
+---
+
+## ⚙️ Cấu Hình Biến Môi Trường (Environment Variables)
+
+Hệ thống hỗ trợ cấu hình tự động thông qua biến môi trường để triển khai trên **Vercel / Netlify** hoặc chạy Local:
+
+| Biến Môi Trường | Mô Tả | Mặc Định / Ví Dụ |
+| :--- | :--- | :--- |
+| `VITE_GEMINI_API_KEY` | Khóa Google Gemini API (Lấy tại Google AI Studio) | `AIzaSy...` |
+| `VITE_GEMINI_MODEL` | Tên mô hình AI muốn sử dụng | `gemini-3.8-flash` hoặc `gemini-2.0-flash` |
+
+> 💡 **Khi deploy lên Vercel**:
+> 1. Vào **Vercel Dashboard** -> Chọn project `FoodAI` -> Chọn tab **Settings** -> **Environment Variables**.
+> 2. Thêm `VITE_GEMINI_API_KEY` và `VITE_GEMINI_MODEL`.
+> 3. Bấm **Save** và Redeploy. Toàn bộ người dùng truy cập web sẽ tự động sử dụng AI mà không cần phải cài đặt thủ công!
 
 ---
 

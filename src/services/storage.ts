@@ -6,25 +6,31 @@ const STORAGE_KEYS = {
   CHECKLIST_CHECKED: 'hnag_checklist_items',
 };
 
-const DEFAULT_CONFIG: AppConfig = {
-  apiKey: '',
-  model: 'gemini-2.0-flash',
-  isConfigured: false,
+const ENV_KEY = (import.meta.env.VITE_GEMINI_API_KEY || '').trim();
+const ENV_MODEL = (import.meta.env.VITE_GEMINI_MODEL || 'gemini-3.8-flash').trim();
+
+export const DEFAULT_CONFIG: AppConfig = {
+  apiKey: ENV_KEY,
+  model: ENV_MODEL || 'gemini-3.8-flash',
+  isConfigured: Boolean(ENV_KEY && ENV_KEY.length > 10),
 };
 
 export const getStoredConfig = (): AppConfig => {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.CONFIG);
-    if (!raw) return DEFAULT_CONFIG;
+    if (!raw) {
+      return DEFAULT_CONFIG;
+    }
     const parsed = JSON.parse(raw);
-    let model = parsed.model || 'gemini-2.0-flash';
+    const apiKey = parsed.apiKey || DEFAULT_CONFIG.apiKey || '';
+    let model = parsed.model || DEFAULT_CONFIG.model || 'gemini-3.8-flash';
     if (model === 'gemini-2.5-flash') {
-      model = 'gemini-2.0-flash';
+      model = DEFAULT_CONFIG.model || 'gemini-3.8-flash';
     }
     return {
-      apiKey: parsed.apiKey || '',
+      apiKey,
       model,
-      isConfigured: Boolean(parsed.apiKey && parsed.apiKey.trim().length > 10),
+      isConfigured: Boolean(apiKey && apiKey.length > 10),
     };
   } catch {
     return DEFAULT_CONFIG;
