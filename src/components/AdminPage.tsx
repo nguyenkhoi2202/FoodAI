@@ -30,10 +30,16 @@ interface AdminPageProps {
 
 const PRESET_MODELS = [
   {
+    id: 'gemini-3.1-flash-lite',
+    name: 'Gemini 3.1 Flash Lite (Siêu Nhanh & Ít Lỗi Nhất)',
+    description: 'Mô hình siêu nhẹ, phản hồi tức thì, tiêu thụ ít token, dồi dào hạn mức & ít bị quá tải nhất',
+    tag: 'Ít lỗi nhất ⭐',
+  },
+  {
     id: 'gemini-3.6-flash',
-    name: 'Gemini 3.6 Flash (Khuyên Dùng Mặc Định)',
-    description: 'Mô hình chuẩn của Google, tốc độ cao, gợi ý món ăn chuẩn vị và phong phú',
-    tag: 'Khuyên dùng',
+    name: 'Gemini 3.6 Flash (Cân Bằng Chuẩn Vị)',
+    description: 'Mô hình tiêu chuẩn của Google, tốc độ cao, gợi ý món ăn chuẩn vị và phong phú',
+    tag: 'Cân bằng',
   },
   {
     id: 'gemini-3.7-flash',

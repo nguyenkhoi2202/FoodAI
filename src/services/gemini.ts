@@ -72,7 +72,7 @@ export async function fetchAvailableGeminiModels(
  */
 export async function testGeminiApiKey(
   apiKey: string,
-  model: string = 'gemini-3.6-flash'
+  model: string = 'gemini-3.1-flash-lite'
 ): Promise<{ success: boolean; message: string }> {
   const allKeys = apiKey.split(/[,;\n]+/).map((k) => k.trim()).filter((k) => k.length > 10);
   const firstKey = allKeys[0] || apiKey.trim();
@@ -242,8 +242,14 @@ export async function callGeminiWithModelFallback(
     throw new Error('Chưa cấu hình API Key Google Gemini hợp lệ.');
   }
 
-  // Supported models on Google's v1beta API
-  const candidateModels = [cleanInitial, 'gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.8-flash'];
+  // Supported models on Google's v1beta API (prioritizing fast & light models to avoid high demand)
+  const candidateModels = [
+    cleanInitial,
+    'gemini-3.1-flash-lite',
+    'gemini-3.6-flash',
+    'gemini-3.7-flash',
+    'gemini-3.8-flash',
+  ];
 
   // Filter out sunsetted/non-existent models (1.5, 2.0, 2.5) and deduplicate
   const modelsToTry = candidateModels
@@ -251,7 +257,7 @@ export async function callGeminiWithModelFallback(
     .filter((m, idx, arr) => arr.indexOf(m) === idx);
 
   if (modelsToTry.length === 0) {
-    modelsToTry.push('gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.8-flash');
+    modelsToTry.push('gemini-3.1-flash-lite', 'gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.8-flash');
   }
 
   let lastError: Error = new Error('Không thể kết nối đến máy chủ Google AI');

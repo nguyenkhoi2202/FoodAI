@@ -33,8 +33,8 @@ export const ChefErrorCard = ({
     return () => clearInterval(interval);
   }, [countdown]);
 
-  const handleSwitchToFallbackModel = () => {
-    saveStoredConfig({ model: 'gemini-3.7-flash' });
+  const handleSwitchToLiteModel = () => {
+    saveStoredConfig({ model: 'gemini-3.1-flash-lite' });
     setCountdown(null);
     onRetry();
   };
@@ -75,19 +75,19 @@ export const ChefErrorCard = ({
             <div className="space-y-1">
               <div className="flex items-center gap-2 font-bold text-sm text-amber-800">
                 <Zap className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                <span>Mô hình tạm thời chạm giới hạn lượt hỏi trong ngày (Limit: 20)</span>
+                <span>Mô hình tạm thời chạm giới hạn hoặc quá tải</span>
               </div>
               <p className="text-xs text-amber-700 leading-relaxed">
-                Mô hình <code className="px-1.5 py-0.5 bg-amber-200/60 rounded font-semibold text-amber-900">gemini-3.6-flash</code> đã hết 20 lượt hỏi miễn phí hôm nay. Bạn hãy chuyển sang <code className="px-1.5 py-0.5 bg-green-200/60 rounded font-semibold text-green-900">gemini-3.7-flash</code> hoặc <code className="px-1.5 py-0.5 bg-blue-200/60 rounded font-semibold text-blue-900">gemini-3.8-flash</code> để tiếp tục sử dụng ngay!
+                Hãy chuyển sang mô hình siêu nhẹ <code className="px-1.5 py-0.5 bg-emerald-100 text-emerald-900 rounded font-semibold">gemini-3.1-flash-lite</code> để phản hồi tức thì, hạn mức dồi dào và tránh nghẽn mạng!
               </p>
             </div>
             <button
               type="button"
-              onClick={handleSwitchToFallbackModel}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs shadow-md transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer"
+              onClick={handleSwitchToLiteModel}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-md transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer"
             >
               <Zap className="w-3.5 h-3.5" />
-              <span>Đổi sang Gemini 3.7 Flash &amp; Thử lại</span>
+              <span>Đổi sang Gemini 3.1 Flash Lite &amp; Thử lại</span>
             </button>
           </div>
         )}

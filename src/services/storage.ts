@@ -7,11 +7,11 @@ const STORAGE_KEYS = {
 };
 
 const ENV_KEY = (import.meta.env.VITE_GEMINI_API_KEY || '').trim();
-const ENV_MODEL = (import.meta.env.VITE_GEMINI_MODEL || 'gemini-3.6-flash').trim();
+const ENV_MODEL = (import.meta.env.VITE_GEMINI_MODEL || 'gemini-3.1-flash-lite').trim();
 
 export const DEFAULT_CONFIG: AppConfig = {
   apiKey: ENV_KEY,
-  model: ENV_MODEL || 'gemini-3.6-flash',
+  model: ENV_MODEL || 'gemini-3.1-flash-lite',
   isConfigured: Boolean(ENV_KEY && ENV_KEY.length > 10),
 };
 
@@ -23,7 +23,7 @@ export const getStoredConfig = (): AppConfig => {
     }
     const parsed = JSON.parse(raw);
     const apiKey = parsed.apiKey || DEFAULT_CONFIG.apiKey || '';
-    let model = parsed.model || DEFAULT_CONFIG.model || 'gemini-3.6-flash';
+    let model = parsed.model || DEFAULT_CONFIG.model || 'gemini-3.1-flash-lite';
     // Auto-migrate models that Google discontinued for this API version
     if (
       model === 'gemini-1.5-flash' ||
@@ -31,7 +31,7 @@ export const getStoredConfig = (): AppConfig => {
       model === 'gemini-2.0-flash' ||
       model === 'gemini-2.5-flash'
     ) {
-      model = 'gemini-3.6-flash';
+      model = 'gemini-3.1-flash-lite';
     }
     return {
       apiKey,
