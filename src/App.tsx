@@ -9,6 +9,7 @@ import { TrioCombos } from './components/TrioCombos';
 import { AdminPage } from './components/AdminPage';
 import { FavoritesModal } from './components/FavoritesModal';
 import { ChefThinkingModal } from './components/ChefThinkingModal';
+import { ChefErrorCard } from './components/ChefErrorCard';
 import type {
   SuggestedDish,
   UserPreferences,
@@ -44,6 +45,7 @@ export function App() {
   const [savedDishes, setSavedDishes] = useState<SavedDish[]>(getSavedDishes());
 
   const [currentDish, setCurrentDish] = useState<SuggestedDish | null>(SAMPLE_DISHES[0]);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [lastPreferences, setLastPreferences] = useState<UserPreferences | null>(null);
   const [lastDietPreferences, setLastDietPreferences] = useState<DietPreferences | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -81,17 +83,26 @@ export function App() {
     }, 100);
   };
 
+  const handleApiError = (error: unknown) => {
+    console.error('API Error:', error);
+    const msg = error instanceof Error ? error.message : 'Bếp trưởng AI đang bận rộn chưa thể chọn món cho bạn lúc này. Vui lòng thử lại!';
+    setApiError(msg);
+    setCurrentDish(null);
+    scrollToResult();
+  };
+
   // Handler for Wizard form submission
   const handleWizardSubmit = async (prefs: UserPreferences) => {
     setLastPreferences(prefs);
     setLastDietPreferences(null);
+    setApiError(null);
     setIsLoading(true);
     try {
       const result = await suggestMealFromGemini(prefs);
       setCurrentDish(result);
       scrollToResult();
     } catch (error) {
-      console.error(error);
+      handleApiError(error);
     } finally {
       setIsLoading(false);
     }
@@ -101,13 +112,14 @@ export function App() {
   const handleDietSubmit = async (dietPrefs: DietPreferences) => {
     setLastDietPreferences(dietPrefs);
     setLastPreferences(null);
+    setApiError(null);
     setIsLoading(true);
     try {
       const result = await suggestMealForDiet(dietPrefs);
       setCurrentDish(result);
       scrollToResult();
     } catch (error) {
-      console.error(error);
+      handleApiError(error);
     } finally {
       setIsLoading(false);
     }
@@ -115,29 +127,36 @@ export function App() {
 
   // Handler for Reroll button
   const handleReroll = async () => {
+    setApiError(null);
     if (lastDietPreferences) {
       handleDietSubmit(lastDietPreferences);
     } else if (lastPreferences) {
       handleWizardSubmit(lastPreferences);
     } else {
-      setIsLoading(true);
-      try {
-        const randomIndex = Math.floor(Math.random() * SAMPLE_DISHES.length);
-        setCurrentDish(SAMPLE_DISHES[randomIndex]);
-        scrollToResult();
-      } finally {
-        setIsLoading(false);
-      }
+      handleWizardSubmit({
+        mealTime: 'dinner',
+        foodCategory: 'family_rice',
+        peopleCount: 4,
+        mainProtein: 'any',
+        budgetRange: 'medium',
+        cookingSpeed: 'normal_35m',
+        regionalFlavor: 'all',
+        weatherVibe: 'Đậm đà, đưa cơm',
+        notes: '',
+      });
     }
   };
 
   // Handler for Lucky Wheel dish selection
   const handleSelectWheelDish = async (dishName: string) => {
+    setApiError(null);
     setIsLoading(true);
     try {
       const result = await suggestRecipeForSpecificDish(dishName, 4);
       setCurrentDish(result);
       scrollToResult();
+    } catch (error) {
+      handleApiError(error);
     } finally {
       setIsLoading(false);
     }
@@ -145,11 +164,14 @@ export function App() {
 
   // Handler for Fridge Chef submission
   const handleFridgeSubmit = async (ingredients: string[], peopleCount: number) => {
+    setApiError(null);
     setIsLoading(true);
     try {
       const result = await suggestMealFromFridge(ingredients, peopleCount);
       setCurrentDish(result);
       scrollToResult();
+    } catch (error) {
+      handleApiError(error);
     } finally {
       setIsLoading(false);
     }
@@ -157,11 +179,14 @@ export function App() {
 
   // Handler for Trio Combos preset selection
   const handleTrioSelect = async (comboTitle: string) => {
+    setApiError(null);
     setIsLoading(true);
     try {
       const result = await suggestRecipeForSpecificDish(comboTitle, 4);
       setCurrentDish(result);
       scrollToResult();
+    } catch (error) {
+      handleApiError(error);
     } finally {
       setIsLoading(false);
     }
@@ -248,9 +273,23 @@ export function App() {
           )}
         </div>
 
-        {/* Suggested Result Section */}
+        {/* Suggested Result Section or Error State */}
         <div ref={resultRef} className="pt-4 scroll-mt-24">
-          {currentDish && (
+          {apiError && (
+            <div className="space-y-4">
+              <ChefErrorCard
+                errorMessage={apiError}
+                onRetry={handleReroll}
+                onLoadSample={() => {
+                  setCurrentDish(SAMPLE_DISHES[0]);
+                  setApiError(null);
+                  scrollToResult();
+                }}
+              />
+            </div>
+          )}
+
+          {currentDish && !apiError && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
