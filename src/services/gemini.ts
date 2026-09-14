@@ -43,12 +43,14 @@ export function extractTextFromResponse(data: any): string {
 export async function fetchAvailableGeminiModels(
   apiKey: string
 ): Promise<{ success: boolean; models: string[]; message?: string }> {
-  if (!apiKey || apiKey.trim().length < 10) {
+  const firstKey = apiKey.split(/[,;\n]+/).map((k) => k.trim()).find((k) => k.length > 10) || apiKey.trim();
+
+  if (!firstKey || firstKey.length < 10) {
     return { success: false, models: [], message: 'API Key không hợp lệ.' };
   }
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey.trim()}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${firstKey}`;
     const res = await fetch(url);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -72,15 +74,17 @@ export async function testGeminiApiKey(
   apiKey: string,
   model: string = 'gemini-3.6-flash'
 ): Promise<{ success: boolean; message: string }> {
-  if (!apiKey || apiKey.trim().length < 10) {
+  const allKeys = apiKey.split(/[,;\n]+/).map((k) => k.trim()).filter((k) => k.length > 10);
+  const firstKey = allKeys[0] || apiKey.trim();
+
+  if (!firstKey || firstKey.length < 10) {
     return { success: false, message: 'API Key không hợp lệ hoặc quá ngắn.' };
   }
 
-  const cleanKey = apiKey.trim();
   const cleanModel = model.trim().replace(/^models\//, '');
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${cleanKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${firstKey}`;
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -93,7 +97,6 @@ export async function testGeminiApiKey(
             parts: [{ text: 'Trả lời đúng từ: OK' }],
           },
         ],
-        // Set higher limit so models with reasoning / thinking tokens don't run out before answering
         generationConfig: {
           maxOutputTokens: 250,
           temperature: 0.1,
@@ -114,10 +117,10 @@ export async function testGeminiApiKey(
 
     // If candidate exists, the API Key and model are authenticated and functional
     if (reply || candidate) {
-      const preview = reply ? ` (Phản hồi: "${reply.slice(0, 40)}")` : '';
+      const keyCountNotice = allKeys.length > 1 ? ` (Đã phát hiện ${allKeys.length} API Key - chế độ tự động xoay vòng kích hoạt)` : '';
       return {
         success: true,
-        message: `Kết nối Google Gemini thành công với model "${cleanModel}"! API Key hoạt động hoàn hảo.${preview}`,
+        message: `Kết nối Google Gemini thành công với model "${cleanModel}"! API Key hoạt động hoàn hảo.${keyCountNotice}`,
       };
     } else {
       return {
@@ -215,20 +218,33 @@ function formatPreferencesPrompt(pref: UserPreferences): string {
 }
 
 /**
- * Execute a Gemini generateContent call with automatic fallback models
- * Uses official active models (gemini-3.6-flash, gemini-3.7-flash, gemini-3.8-flash)
+ * Execute a Gemini generateContent call with automatic fallback models and multi-key support
+ * Supports:
+ * - Multi-key rotation: Comma-separated keys in config (e.g. key1, key2)
+ * - Automatic model fallback (3.6-flash -> 3.7-flash -> 3.8-flash)
+ * - Automatic retry on 503 High Demand / Server Overloaded with brief backoff
  */
 export async function callGeminiWithModelFallback(
   prompt: string,
   initialModel: string,
-  apiKey: string,
+  apiKeyString: string,
   maxOutputTokens: number = 3500
 ): Promise<string> {
   const cleanInitial = initialModel.trim().replace(/^models\//, '');
-  
+
+  // Extract all API keys if user provides multiple (comma, semicolon or newline separated)
+  const apiKeys = apiKeyString
+    .split(/[,;\n]+/)
+    .map((k) => k.trim())
+    .filter((k) => k.length > 10);
+
+  if (apiKeys.length === 0) {
+    throw new Error('Chưa cấu hình API Key Google Gemini hợp lệ.');
+  }
+
   // Supported models on Google's v1beta API
   const candidateModels = [cleanInitial, 'gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.8-flash'];
-  
+
   // Filter out sunsetted/non-existent models (1.5, 2.0, 2.5) and deduplicate
   const modelsToTry = candidateModels
     .filter((m) => !['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash', 'gemini-2.5-flash'].includes(m))
@@ -240,79 +256,96 @@ export async function callGeminiWithModelFallback(
 
   let lastError: Error = new Error('Không thể kết nối đến máy chủ Google AI');
 
-  for (let i = 0; i < modelsToTry.length; i++) {
-    const currentModel = modelsToTry[i];
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey.trim()}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens,
-          },
-        }),
-      });
+  // Try across available keys and models
+  for (let k = 0; k < apiKeys.length; k++) {
+    const currentKey = apiKeys[k];
 
-      if (!response.ok) {
-        const errBody = await response.json().catch(() => ({}));
-        const msg = errBody?.error?.message || `Lỗi HTTP ${response.status} (${response.statusText})`;
+    for (let i = 0; i < modelsToTry.length; i++) {
+      const currentModel = modelsToTry[i];
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${currentKey}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens,
+            },
+          }),
+        });
 
-        const isQuotaOrNotFound =
-          response.status === 429 ||
-          response.status === 404 ||
+        if (!response.ok) {
+          const errBody = await response.json().catch(() => ({}));
+          const msg = errBody?.error?.message || `Lỗi HTTP ${response.status} (${response.statusText})`;
+
+          const isHighDemand =
+            response.status === 503 ||
+            msg.toLowerCase().includes('high demand') ||
+            msg.toLowerCase().includes('temporar') ||
+            msg.toLowerCase().includes('overloaded') ||
+            msg.toLowerCase().includes('unavailable');
+
+          const isQuotaOrLimit =
+            response.status === 429 ||
+            response.status === 404 ||
+            isHighDemand ||
+            msg.toLowerCase().includes('quota') ||
+            msg.toLowerCase().includes('rate limit') ||
+            msg.toLowerCase().includes('resource_exhausted') ||
+            msg.includes('limit:') ||
+            msg.includes('not found') ||
+            msg.includes('no longer available') ||
+            msg.includes('is not supported for generateContent');
+
+          if (isQuotaOrLimit) {
+            console.warn(
+              `[Gemini] Key #${k + 1}, Model "${currentModel}" gặp sự cố (${msg}). Đang tự động chuyển sang phương án dự phòng...`
+            );
+            lastError = new Error(msg);
+
+            // If 503 High Demand, wait 1s before trying next candidate
+            if (isHighDemand) {
+              await new Promise((r) => setTimeout(r, 1000));
+            }
+            continue;
+          }
+
+          throw new Error(msg);
+        }
+
+        const data = await response.json();
+        const text = extractTextFromResponse(data);
+        if (!text) {
+          continue;
+        }
+
+        return text;
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        const msg = lastError.message;
+        const isRecoverable =
           msg.toLowerCase().includes('quota') ||
+          msg.toLowerCase().includes('high demand') ||
+          msg.toLowerCase().includes('temporar') ||
+          msg.toLowerCase().includes('overloaded') ||
+          msg.toLowerCase().includes('unavailable') ||
           msg.toLowerCase().includes('rate limit') ||
           msg.toLowerCase().includes('resource_exhausted') ||
           msg.includes('limit:') ||
           msg.includes('not found') ||
           msg.includes('no longer available') ||
-          msg.includes('is not supported for generateContent');
+          msg.includes('503') ||
+          msg.includes('429');
 
-        if (isQuotaOrNotFound && i < modelsToTry.length - 1) {
-          console.warn(
-            `Model "${currentModel}" gặp sự cố (${msg}). Đang tự động chuyển sang "${modelsToTry[i + 1]}"...`
-          );
-          lastError = new Error(msg);
+        if (isRecoverable) {
           continue;
         }
 
-        throw new Error(msg);
-      }
-
-      const data = await response.json();
-      const text = extractTextFromResponse(data);
-      if (!text) {
-        if (i < modelsToTry.length - 1) {
-          continue;
+        if (k === apiKeys.length - 1 && i === modelsToTry.length - 1) {
+          throw lastError;
         }
-        throw new Error('Máy chủ Google AI không trả về nội dung hợp lệ.');
-      }
-
-      return text;
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      const msg = lastError.message;
-      const isQuotaOrNotFound =
-        msg.toLowerCase().includes('quota') ||
-        msg.toLowerCase().includes('rate limit') ||
-        msg.toLowerCase().includes('resource_exhausted') ||
-        msg.includes('limit:') ||
-        msg.includes('not found') ||
-        msg.includes('no longer available') ||
-        msg.includes('is not supported for generateContent');
-
-      if (isQuotaOrNotFound && i < modelsToTry.length - 1) {
-        console.warn(
-          `Model "${currentModel}" gặp sự cố (${msg}). Tự động thử model dự phòng "${modelsToTry[i + 1]}"...`
-        );
-        continue;
-      }
-
-      if (i === modelsToTry.length - 1) {
-        throw lastError;
       }
     }
   }

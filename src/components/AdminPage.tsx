@@ -351,7 +351,7 @@ export const AdminPage = ({
                   type={showApiKey ? 'text' : 'password'}
                   value={apiKeyInput}
                   onChange={(e) => setApiKeyInput(e.target.value)}
-                  placeholder="Dán mã API Key của bạn (AIzaSy...)"
+                  placeholder="Dán API Key (AIzaSy... hoặc nhiều key cách nhau dấu phẩy ,)"
                   className="w-full pl-4 pr-12 py-3.5 rounded-2xl bg-gray-950 border border-gray-800 text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
                 />
                 <button
@@ -362,6 +362,9 @@ export const AdminPage = ({
                   {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                💡 <strong className="text-amber-300">Mẹo không lo giới hạn:</strong> Bạn có thể dán <strong>nhiều API Key</strong> (tạo từ các tài khoản Google khác nhau, cách nhau dấu phẩy <code className="px-1 py-0.5 bg-gray-800 text-orange-300 rounded">,</code>) để hệ thống tự động xoay vòng khi có key chạm trần quota hoặc Google quá tải.
+              </p>
             </div>
 
             {/* Box 2: Model Selection */}
@@ -373,7 +376,7 @@ export const AdminPage = ({
                   </div>
                   <div>
                     <h4 className="font-bold text-sm text-white">Lựa Chọn Mô Hình AI (Model)</h4>
-                    <p className="text-xs text-gray-400">Hỗ trợ Gemini 2.0 Flash, 1.5 Flash, 3.8 Flash...</p>
+                    <p className="text-xs text-gray-400">Hỗ trợ Gemini 3.6 Flash, 3.7 Flash, 3.8 Flash...</p>
                   </div>
                 </div>
 
