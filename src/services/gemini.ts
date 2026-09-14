@@ -70,7 +70,7 @@ export async function fetchAvailableGeminiModels(
  */
 export async function testGeminiApiKey(
   apiKey: string,
-  model: string = 'gemini-2.0-flash'
+  model: string = 'gemini-3.6-flash'
 ): Promise<{ success: boolean; message: string }> {
   if (!apiKey || apiKey.trim().length < 10) {
     return { success: false, message: 'API Key không hợp lệ hoặc quá ngắn.' };
@@ -143,10 +143,16 @@ function parseJsonFromGemini(text: string): any {
   // Try to find the first { and last }
   const firstBrace = cleaned.indexOf('{');
   const lastBrace = cleaned.lastIndexOf('}');
-  if (firstBrace >= 0 && lastBrace > firstBrace) {
-    cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
   }
-  return JSON.parse(cleaned);
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    console.error('Failed to parse JSON from Gemini:', text);
+    throw new Error('Đầu bếp AI đã tạo công thức nhưng định dạng dữ liệu bị lỗi. Vui lòng bấm thử lại!');
+  }
 }
 
 /**
@@ -210,8 +216,7 @@ function formatPreferencesPrompt(pref: UserPreferences): string {
 
 /**
  * Execute a Gemini generateContent call with automatic fallback models
- * If the configured model hits 429 quota / rate limit (e.g. limit: 20 on preview models like gemini-3.6-flash),
- * it seamlessly tries gemini-2.0-flash or gemini-1.5-flash to ensure user gets their dish!
+ * Uses official active models (gemini-3.6-flash, gemini-3.7-flash, gemini-3.8-flash)
  */
 export async function callGeminiWithModelFallback(
   prompt: string,
@@ -220,9 +225,18 @@ export async function callGeminiWithModelFallback(
   maxOutputTokens: number = 3500
 ): Promise<string> {
   const cleanInitial = initialModel.trim().replace(/^models\//, '');
-  const candidateModels = [cleanInitial, 'gemini-2.0-flash', 'gemini-1.5-flash'];
-  // Keep unique candidates in original preference order
-  const modelsToTry = candidateModels.filter((m, idx) => candidateModels.indexOf(m) === idx);
+  
+  // Supported models on Google's v1beta API
+  const candidateModels = [cleanInitial, 'gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.8-flash'];
+  
+  // Filter out sunsetted/non-existent models (1.5, 2.0, 2.5) and deduplicate
+  const modelsToTry = candidateModels
+    .filter((m) => !['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash', 'gemini-2.5-flash'].includes(m))
+    .filter((m, idx, arr) => arr.indexOf(m) === idx);
+
+  if (modelsToTry.length === 0) {
+    modelsToTry.push('gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.8-flash');
+  }
 
   let lastError: Error = new Error('Không thể kết nối đến máy chủ Google AI');
 
@@ -246,18 +260,20 @@ export async function callGeminiWithModelFallback(
         const errBody = await response.json().catch(() => ({}));
         const msg = errBody?.error?.message || `Lỗi HTTP ${response.status} (${response.statusText})`;
 
-        const isQuotaOrLimit =
+        const isQuotaOrNotFound =
           response.status === 429 ||
+          response.status === 404 ||
           msg.toLowerCase().includes('quota') ||
           msg.toLowerCase().includes('rate limit') ||
           msg.toLowerCase().includes('resource_exhausted') ||
           msg.includes('limit:') ||
           msg.includes('not found') ||
-          msg.includes('no longer available');
+          msg.includes('no longer available') ||
+          msg.includes('is not supported for generateContent');
 
-        if (isQuotaOrLimit && i < modelsToTry.length - 1) {
+        if (isQuotaOrNotFound && i < modelsToTry.length - 1) {
           console.warn(
-            `Model "${currentModel}" chạm giới hạn Quota (${msg}). Đang tự động thử chuyển sang "${modelsToTry[i + 1]}"...`
+            `Model "${currentModel}" gặp sự cố (${msg}). Đang tự động chuyển sang "${modelsToTry[i + 1]}"...`
           );
           lastError = new Error(msg);
           continue;
@@ -279,15 +295,16 @@ export async function callGeminiWithModelFallback(
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       const msg = lastError.message;
-      const isQuotaOrLimit =
+      const isQuotaOrNotFound =
         msg.toLowerCase().includes('quota') ||
         msg.toLowerCase().includes('rate limit') ||
         msg.toLowerCase().includes('resource_exhausted') ||
         msg.includes('limit:') ||
         msg.includes('not found') ||
-        msg.includes('no longer available');
+        msg.includes('no longer available') ||
+        msg.includes('is not supported for generateContent');
 
-      if (isQuotaOrLimit && i < modelsToTry.length - 1) {
+      if (isQuotaOrNotFound && i < modelsToTry.length - 1) {
         console.warn(
           `Model "${currentModel}" gặp sự cố (${msg}). Tự động thử model dự phòng "${modelsToTry[i + 1]}"...`
         );

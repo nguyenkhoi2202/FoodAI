@@ -30,28 +30,22 @@ interface AdminPageProps {
 
 const PRESET_MODELS = [
   {
-    id: 'gemini-2.0-flash',
-    name: 'Gemini 2.0 Flash (Khuyên Dùng Tốt Nhất)',
-    description: '1.500 lượt hỏi/ngày miễn phí, tốc độ siêu nhanh, thông minh & phản hồi công thức cực chuẩn',
-    tag: 'Tối ưu nhất',
+    id: 'gemini-3.6-flash',
+    name: 'Gemini 3.6 Flash (Khuyên Dùng Mặc Định)',
+    description: 'Mô hình chuẩn của Google, tốc độ cao, gợi ý món ăn chuẩn vị và phong phú',
+    tag: 'Khuyên dùng',
   },
   {
-    id: 'gemini-1.5-flash',
-    name: 'Gemini 1.5 Flash (Rất Ổn Định)',
-    description: '1.500 lượt hỏi/ngày miễn phí, chuẩn hóa toàn cầu, nhẹ và cực kỳ bền bỉ',
-    tag: '1.500 lượt/ngày',
-  },
-  {
-    id: 'gemini-1.5-pro',
-    name: 'Gemini 1.5 Pro (Đầu Bếp Chuyên Sâu)',
-    description: 'Suy luận ẩm thực chuyên sâu, công thức cầu kỳ chi tiết (50 lượt/ngày)',
-    tag: 'Chuyên sâu',
+    id: 'gemini-3.7-flash',
+    name: 'Gemini 3.7 Flash (Thế Hệ Mới)',
+    description: 'Bản cập nhật nâng cao, hiểu sâu khẩu vị và đa dạng cách chế biến',
+    tag: 'Mới nhất',
   },
   {
     id: 'gemini-3.8-flash',
-    name: 'Gemini 3.8 Flash (Bản Thử Nghiệm)',
-    description: 'Thế hệ 3.x với thinking tokens (Lưu ý: Google chỉ cho 20 lượt hỏi/ngày ở bản miễn phí)',
-    tag: 'Giới hạn 20 lượt/ngày',
+    name: 'Gemini 3.8 Flash (Tư Duy Sâu Reasoning)',
+    description: 'Mô hình có tư duy ẩm thực chuyên sâu, tính toán dinh dưỡng chi tiết',
+    tag: 'Chuyên sâu',
   },
 ];
 
@@ -67,7 +61,7 @@ export const AdminPage = ({
   const [passwordError, setPasswordError] = useState('');
 
   const [apiKeyInput, setApiKeyInput] = useState(config.apiKey || '');
-  const [selectedModel, setSelectedModel] = useState<string>(config.model || 'gemini-2.0-flash');
+  const [selectedModel, setSelectedModel] = useState<string>(config.model || 'gemini-3.6-flash');
   const [customModelInput, setCustomModelInput] = useState<string>('');
   const [isCustomModel, setIsCustomModel] = useState<boolean>(false);
   const [showApiKey, setShowApiKey] = useState(false);
