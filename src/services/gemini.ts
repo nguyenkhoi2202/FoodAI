@@ -1,0 +1,769 @@
+import type { SuggestedDish, UserPreferences, DietPreferences } from '../types/meal';
+import { SAMPLE_DISHES } from '../data/sampleDishes';
+import { getStoredConfig } from './storage';
+
+/**
+ * Robust text extractor that safely handles thinking models (where parts[0] is thought and parts[1] is text)
+ */
+export function extractTextFromResponse(data: any): string {
+  const candidate = data?.candidates?.[0];
+  if (!candidate) return '';
+
+  const parts = candidate?.content?.parts;
+  if (!Array.isArray(parts) || parts.length === 0) {
+    return '';
+  }
+
+  // Filter out parts that contain text (ignoring thought / reasoning parts)
+  const textSegments: string[] = [];
+  for (const part of parts) {
+    if (part && typeof part.text === 'string') {
+      textSegments.push(part.text);
+    }
+  }
+
+  if (textSegments.length > 0) {
+    return textSegments.join('').trim();
+  }
+
+  // Fallback: if there are thoughts but no text field yet
+  const thoughtSegments = parts
+    .filter((p: any) => p && typeof p.thought === 'string')
+    .map((p: any) => p.thought);
+  if (thoughtSegments.length > 0) {
+    return thoughtSegments.join('').trim();
+  }
+
+  return '';
+}
+
+/**
+ * Fetch available models for an API key directly from Google
+ */
+export async function fetchAvailableGeminiModels(
+  apiKey: string
+): Promise<{ success: boolean; models: string[]; message?: string }> {
+  if (!apiKey || apiKey.trim().length < 10) {
+    return { success: false, models: [], message: 'API Key không hợp lệ.' };
+  }
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey.trim()}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return { success: false, models: [], message: err?.error?.message || `Lỗi HTTP ${res.status}` };
+    }
+    const data = await res.json();
+    const modelsList: string[] = (data.models || [])
+      .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+      .map((m: any) => m.name.replace(/^models\//, ''));
+    return { success: true, models: modelsList };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Không thể kết nối';
+    return { success: false, models: [], message: msg };
+  }
+}
+
+/**
+ * Validate and test a Google Gemini API Key
+ */
+export async function testGeminiApiKey(
+  apiKey: string,
+  model: string = 'gemini-2.0-flash'
+): Promise<{ success: boolean; message: string }> {
+  if (!apiKey || apiKey.trim().length < 10) {
+    return { success: false, message: 'API Key không hợp lệ hoặc quá ngắn.' };
+  }
+
+  const cleanKey = apiKey.trim();
+  const cleanModel = model.trim().replace(/^models\//, '');
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${cleanKey}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: 'Trả lời đúng từ: OK' }],
+          },
+        ],
+        // Set higher limit so models with reasoning / thinking tokens don't run out before answering
+        generationConfig: {
+          maxOutputTokens: 250,
+          temperature: 0.1,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMsg =
+        errorData?.error?.message || `Lỗi HTTP ${response.status} (${response.statusText})`;
+      return { success: false, message: `Kết nối thất bại: ${errorMsg}` };
+    }
+
+    const data = await response.json();
+    const reply = extractTextFromResponse(data);
+    const candidate = data?.candidates?.[0];
+
+    // If candidate exists, the API Key and model are authenticated and functional
+    if (reply || candidate) {
+      const preview = reply ? ` (Phản hồi: "${reply.slice(0, 40)}")` : '';
+      return {
+        success: true,
+        message: `Kết nối Google Gemini thành công với model "${cleanModel}"! API Key hoạt động hoàn hảo.${preview}`,
+      };
+    } else {
+      return {
+        success: false,
+        message: `Google API trả về cấu trúc rỗng: ${JSON.stringify(data).slice(0, 150)}...`,
+      };
+    }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Lỗi mạng hoặc kết nối không xác định';
+    return { success: false, message: `Không thể kết nối đến máy chủ Google: ${message}` };
+  }
+}
+
+/**
+ * Helper to clean and parse JSON from Gemini's response
+ */
+function parseJsonFromGemini(text: string): any {
+  let cleaned = text.trim();
+  // Strip ```json and ```
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  }
+  // Try to find the first { and last }
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+  }
+  return JSON.parse(cleaned);
+}
+
+/**
+ * Map UserPreferences into human-readable Vietnamese descriptions
+ */
+function formatPreferencesPrompt(pref: UserPreferences): string {
+  const mealMap: Record<string, string> = {
+    lunch: 'Bữa trưa',
+    dinner: 'Bữa tối',
+    breakfast: 'Bữa sáng',
+  };
+
+  const categoryMap: Record<string, string> = {
+    family_rice: 'Mâm cơm gia đình chuẩn Việt (Combo hài hòa: Món Mặn đưa cơm + Canh thanh mát + Món Xào/Rau)',
+    noodle_soup: 'Đổi vị món nước (Bún, Phở, Mì, Bánh canh, Hủ tiếu, Miến... đậm đà)',
+    quick_single: '1 món nhanh gọn siêu tốc (< 20 phút: Cơm chiên, Bún xào, Mì xào, Bò né...)',
+    healthy_clean: 'Eat Clean / Healthy / Thanh đạm (Ít dầu mỡ, luộc/hấp, nhiều rau xanh, tốt cho vóc dáng)',
+    party_gathering: 'Cuối tuần lai rai / Món cuốn / Lẩu / Nướng quây quần gia đình bạn bè',
+  };
+
+  const proteinMap: Record<string, string> = {
+    any: 'Tùy biến tự do (Đầu bếp AI tự chọn nguyên liệu đạm ngon và hợp thời tiết nhất)',
+    pork: 'Thịt heo / Sườn non',
+    chicken: 'Thịt gà / Vịt',
+    beef: 'Thịt bò',
+    seafood: 'Cá / Tôm / Nghêu sò hải sản',
+    egg_tofu: 'Trứng / Đậu phụ (Tiết kiệm, thanh nhẹ, nhanh)',
+  };
+
+  const budgetMap: Record<string, string> = {
+    budget: 'Tiết kiệm sinh viên (< 60.000đ cho cả bữa ăn)',
+    medium: 'Bình dân gia đình (80.000đ - 150.000đ, đầy đặn cân đối thịt rau)',
+    premium: 'Tươm tất thả ga (180.000đ - 300.000đ+, nguyên liệu tươi ngon cao cấp)',
+  };
+
+  const speedMap: Record<string, string> = {
+    fast_20m: 'Nấu siêu tốc dưới 20 phút (nhanh gọn lẹ, ít dọn rửa)',
+    normal_35m: 'Vừa phải khoảng 30 - 35 phút',
+    relaxed_50m: 'Thoải mái khoảng 45 - 60 phút (có thể kho kĩ, ninh hầm đậm đà)',
+  };
+
+  const regionMap: Record<string, string> = {
+    all: 'Phong vị Việt Nam đại chúng (dễ ăn, vừa khẩu vị mọi người)',
+    north: 'Đặc trưng chuẩn vị Miền Bắc (thanh tao, thơm mùi tiêu gừng)',
+    central: 'Đặc trưng chuẩn vị Miền Trung (đậm đà, cay thơm nồng ấm)',
+    south: 'Đặc trưng chuẩn vị Miền Nam / Miền Tây (đậm đà, hơi ngọt thanh, thơm béo nhẹ)',
+  };
+
+  return `
+- Bữa ăn: ${mealMap[pref.mealTime] || pref.mealTime}
+- Thể loại món muốn ăn: ${categoryMap[pref.foodCategory] || pref.foodCategory}
+- Khẩu phần ăn: ${pref.peopleCount} người (BẮT BUỘC: Phải định lượng chính xác nguyên liệu cho đúng ${pref.peopleCount} người ăn)
+- Nguyên liệu đạm chủ đạo: ${proteinMap[pref.mainProtein] || pref.mainProtein}
+- Mức ngân sách đi chợ: ${budgetMap[pref.budgetRange] || pref.budgetRange}
+- Thời gian nấu sẵn có: ${speedMap[pref.cookingSpeed] || pref.cookingSpeed}
+- Phong vị vùng miền: ${regionMap[pref.regionalFlavor] || pref.regionalFlavor}
+- Cảm giác thèm ăn & Thời tiết hôm nay: ${pref.weatherVibe || 'Dễ ăn, đưa cơm'}
+- Ghi chú thêm từ người dùng: ${pref.notes || 'Không có'}
+  `.trim();
+}
+
+/**
+ * Generate food suggestion based on user preferences using Gemini API
+ */
+export async function suggestMealFromGemini(pref: UserPreferences): Promise<SuggestedDish> {
+  const config = getStoredConfig();
+
+  // If no API key configured, use intelligent sample matching
+  if (!config.isConfigured || !config.apiKey) {
+    await new Promise((r) => setTimeout(r, 600));
+    return generateFallbackSuggestion(pref);
+  }
+
+  const cleanModel = config.model.trim().replace(/^models\//, '');
+  const prompt = `
+Bạn là Siêu Trợ Lý Đầu Bếp AI & Chuyên gia Văn Hóa Ẩm Thực Việt Nam "Hôm Nay Ăn Gì".
+Người dùng đang rất phân vân không biết nấu gì, ăn gì và cần bạn quyết định thay cho họ một thực đơn hoàn hảo!
+
+Dưới đây là thông tin chi tiết về mong muốn của người dùng:
+${formatPreferencesPrompt(pref)}
+
+NHIỆM VỤ CỦA BẠN:
+Đưa ra 1 gợi ý món ăn (hoặc mâm cơm) tối ưu nhất, giải quyết hoàn hảo bài toán "Hôm nay ăn gì" cho họ.
+Định lượng nguyên liệu và ước tính chi phí PHẢI phù hợp thực tế đi chợ tại Việt Nam cho ${pref.peopleCount} người ăn.
+
+BẠN PHẢI TRẢ VỀ KẾT QUẢ DƯỚI DẠNG JSON CHUẨN (KHÔNG CHỨA BẤT KỲ VĂN BẢN NÀO BÊN NGOÀI KHỐI JSON) VỚI CẤU TRÚC SAU:
+{
+  "name": "Tên món ăn hoặc mâm cơm (Ví dụ: Sườn Xào Chua Ngọt + Canh Cải Thịt Bằm)",
+  "tagline": "Một câu khẩu hiệu ngắn gọn hấp dẫn đánh trúng tâm lý thèm ăn",
+  "mealType": "${pref.mealTime}",
+  "peopleCount": ${pref.peopleCount},
+  "estimatedTotalCost": "Ước tính tổng chi phí (Ví dụ: 120.000đ - 140.000đ)",
+  "estimatedCookingTime": "Thời gian nấu (Ví dụ: 30 phút)",
+  "difficulty": "Dễ" | "Trung bình" | "Cầu kỳ",
+  "nutritionOverview": {
+    "caloriesApprox": "~500 kcal / người",
+    "highlights": ["Giàu protein", "Nhiều chất xơ thanh mát", "Ít dầu mỡ"]
+  },
+  "whyThisDish": "Lời giải thích vì sao bạn chọn món này giải quyết đúng nhu cầu số người, ngân sách và sở thích của họ",
+  "ingredients": [
+    {
+      "name": "Tên nguyên liệu",
+      "amount": "Số lượng cụ thể cho ${pref.peopleCount} người (Ví dụ: 500g, 1 bó, 2 quả)",
+      "estimatedPrice": "Ước lượng giá tiền (Ví dụ: 50.000đ)",
+      "category": "meat_fish" | "veggie" | "spice_seasoning" | "staple"
+    }
+  ],
+  "steps": [
+    {
+      "stepNumber": 1,
+      "title": "Tên bước",
+      "instruction": "Hướng dẫn chi tiết, ngắn gọn, dễ làm",
+      "durationMinutes": 5,
+      "chefTip": "Mẹo nhỏ bí quyết của đầu bếp (nếu có)"
+    }
+  ],
+  "sideDishes": ["Món ăn kèm 1", "Món ăn kèm 2"],
+  "chefAdvice": "Lời khuyên tổng kết của đầu bếp để bữa ăn ngon trọn vẹn"
+}
+`.trim();
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${config.apiKey.trim()}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: prompt }],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 3500,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.json().catch(() => ({}));
+      console.error('Gemini API Error:', errBody);
+      return generateFallbackSuggestion(pref, `(Lưu ý: API Gemini gặp sự cố: ${errBody?.error?.message || response.statusText}. Đang hiển thị công thức tuyển chọn)`);
+    }
+
+    const data = await response.json();
+    const candidateText = extractTextFromResponse(data);
+    if (!candidateText) {
+      return generateFallbackSuggestion(pref);
+    }
+
+    const parsed = parseJsonFromGemini(candidateText);
+    return {
+      ...parsed,
+      id: 'dish-' + Date.now(),
+    };
+  } catch (error) {
+    console.error('Gemini fetch failure:', error);
+    return generateFallbackSuggestion(pref);
+  }
+}
+
+/**
+ * Generate dish based on available ingredients in fridge
+ */
+export async function suggestMealFromFridge(
+  ingredients: string[],
+  peopleCount: number = 2
+): Promise<SuggestedDish> {
+  const config = getStoredConfig();
+
+  if (!config.isConfigured || !config.apiKey) {
+    await new Promise((r) => setTimeout(r, 600));
+    return {
+      id: 'fridge-' + Date.now(),
+      name: `Món Ngon Dọn Tủ: ${ingredients.slice(0, 3).join(' + ')} Xào Thập Cẩm`,
+      tagline: 'Tận dụng triệt để nguyên liệu sẵn có trong tủ lạnh, không lãng phí thức ăn!',
+      mealType: 'Bữa ăn nhanh từ tủ lạnh',
+      peopleCount,
+      estimatedTotalCost: 'Gần như 0đ (Đã có sẵn nguyên liệu)',
+      estimatedCookingTime: '20 phút',
+      difficulty: 'Dễ',
+      nutritionOverview: {
+        caloriesApprox: '~450 kcal / người',
+        highlights: ['Tận dụng đồ tươi', 'Tiết kiệm ví tiền', 'Hạn chế rác thải'],
+      },
+      whyThisDish: `Bạn đang có sẵn ${ingredients.join(', ')}. Đây là sự kết hợp cực kỳ hài hòa và nhanh gọn nhất cho ${peopleCount} người mà không cần phải đi chợ thêm!`,
+      ingredients: ingredients.map((ing, idx) => ({
+        name: ing,
+        amount: `Vừa đủ cho ${peopleCount} người`,
+        estimatedPrice: 'Có sẵn trong tủ lạnh',
+        category: idx % 2 === 0 ? 'meat_fish' : 'veggie',
+      })),
+      steps: [
+        {
+          stepNumber: 1,
+          title: 'Sơ chế nguyên liệu có sẵn',
+          instruction: `Rửa sạch và cắt miếng vừa ăn các nguyên liệu: ${ingredients.join(', ')}.`,
+          durationMinutes: 5,
+        },
+        {
+          stepNumber: 2,
+          title: 'Chế biến xào lăn nhanh với lửa lớn',
+          instruction: 'Phi thơm tỏi hoặc hành, cho phần thịt/đạm vào đảo săn trước, tiếp tục trút rau củ vào đảo đều tay trên lửa lớn. Nêm hạt nêm, nước mắm, tiêu vừa vị.',
+          durationMinutes: 10,
+          chefTip: 'Xào lửa to giúp rau giữ được độ giòn ngọt và màu sắc tươi tắn.',
+        },
+        {
+          stepNumber: 3,
+          title: 'Hoàn thiện và thưởng thức',
+          instruction: 'Tắt bếp, rắc chút hành hoa và tiêu xay thơm nức mũi. Dọn ra đĩa ăn kèm cơm nóng.',
+          durationMinutes: 2,
+        },
+      ],
+      chefAdvice: 'Thêm 1 chút dầu hào nếu có sẵn trong bếp sẽ giúp món xào bóng bẩy và thơm ngon hơn gấp bội!',
+    };
+  }
+
+  const cleanModel = config.model.trim().replace(/^models\//, '');
+  const prompt = `
+Bạn là Siêu Trợ Lý Bếp Trưởng AI "Hôm Nay Ăn Gì".
+Người dùng muốn dọn tủ lạnh và đang có sẵn các nguyên liệu sau: ${ingredients.join(', ')}.
+Số người ăn: ${peopleCount} người.
+
+NHIỆM VỤ:
+Gợi ý 1 món ăn ngon nhất, dễ nấu nhất kết hợp các nguyên liệu trên để người dùng KHÔNG CẦN phải chạy ra chợ mua thêm (hoặc chỉ cần gia vị cơ bản như mắm, muối, tỏi, ớt).
+
+TRẢ VỀ JSON DUY NHẤT VỚI CẤU TRÚC:
+{
+  "name": "Tên món ăn",
+  "tagline": "Khẩu hiệu ngắn gọn",
+  "mealType": "Bữa cơm dọn tủ lạnh",
+  "peopleCount": ${peopleCount},
+  "estimatedTotalCost": "Tận dụng đồ tủ lạnh (< 20.000đ gia vị)",
+  "estimatedCookingTime": "Thời gian nấu (phút)",
+  "difficulty": "Dễ",
+  "nutritionOverview": {
+    "caloriesApprox": "~450 kcal / người",
+    "highlights": ["Tiết kiệm", "Nhanh gọn", "Cân bằng"]
+  },
+  "whyThisDish": "Lý do kết hợp các nguyên liệu trên",
+  "ingredients": [
+    {
+      "name": "Tên nguyên liệu",
+      "amount": "Định lượng",
+      "estimatedPrice": "Có sẵn / 5.000đ",
+      "category": "meat_fish" | "veggie" | "spice_seasoning" | "staple"
+    }
+  ],
+  "steps": [
+    {
+      "stepNumber": 1,
+      "title": "Tên bước",
+      "instruction": "Nội dung",
+      "durationMinutes": 5,
+      "chefTip": "Mẹo vặt"
+    }
+  ],
+  "sideDishes": ["Ăn kèm..."],
+  "chefAdvice": "Mẹo hữu ích khi dọn tủ"
+}
+`.trim();
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${config.apiKey.trim()}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 3000,
+        },
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const text = extractTextFromResponse(data);
+      if (text) {
+        return { ...parseJsonFromGemini(text), id: 'fridge-' + Date.now() };
+      }
+    }
+  } catch (err) {
+    console.error('Gemini Fridge error:', err);
+  }
+
+  return generateFallbackSuggestion({
+    mealTime: 'lunch',
+    foodCategory: 'family_rice',
+    peopleCount,
+    mainProtein: 'any',
+    budgetRange: 'budget',
+    cookingSpeed: 'fast_20m',
+    regionalFlavor: 'all',
+    weatherVibe: 'Dọn tủ lạnh',
+    notes: ingredients.join(', '),
+  });
+}
+
+/**
+ * Generate recipe when user spins the Lucky Wheel or clicks a preset
+ */
+export async function suggestRecipeForSpecificDish(
+  dishName: string,
+  peopleCount: number = 4
+): Promise<SuggestedDish> {
+  const config = getStoredConfig();
+
+  if (!config.isConfigured || !config.apiKey) {
+    const matched = SAMPLE_DISHES.find((d) => d.name.toLowerCase().includes(dishName.toLowerCase()));
+    if (matched) return { ...matched, id: 'dish-' + Date.now() };
+
+    return {
+      id: 'dish-' + Date.now(),
+      name: dishName,
+      tagline: `Món ngon quay trúng từ Vòng Quay May Mắn, chuẩn vị cho ${peopleCount} người!`,
+      mealType: 'Bữa cơm ngẫu nhiên',
+      peopleCount,
+      estimatedTotalCost: '120.000đ - 160.000đ',
+      estimatedCookingTime: '30 - 40 phút',
+      difficulty: 'Trung bình',
+      nutritionOverview: {
+        caloriesApprox: '~520 kcal / người',
+        highlights: ['Đầy đủ dinh dưỡng', 'Trúng món ưng ý', 'Hết phân vân'],
+      },
+      whyThisDish: `Vòng quay định mệnh đã chọn món "${dishName}". Hãy cùng bắt tay vào bếp nấu ngay nhé!`,
+      ingredients: [
+        { name: `Nguyên liệu chính cho món ${dishName}`, amount: `${peopleCount * 150}g`, estimatedPrice: '80.000đ', category: 'meat_fish' },
+        { name: 'Rau củ ăn kèm tươi xanh', amount: '1 bó', estimatedPrice: '15.000đ', category: 'veggie' },
+        { name: 'Hành, tỏi, ớt, tiêu, gia vị chuẩn', amount: 'Vừa đủ', estimatedPrice: '10.000đ', category: 'spice_seasoning' },
+        { name: 'Gạo tẻ thơm nấu cơm dẻo', amount: `${peopleCount} bát`, estimatedPrice: '15.000đ', category: 'staple' },
+      ],
+      steps: [
+        {
+          stepNumber: 1,
+          title: 'Chuẩn bị và sơ chế',
+          instruction: `Rửa sạch và tẩm ướp các nguyên liệu cho món ${dishName} với gia vị cơ bản trong 15 phút.`,
+          durationMinutes: 10,
+        },
+        {
+          stepNumber: 2,
+          title: 'Nấu chín đậm đà',
+          instruction: 'Bắc bếp, xào hoặc kho/hấp theo đúng khẩu vị gia đình đến khi chín đều và tỏa hương thơm lừng.',
+          durationMinutes: 20,
+        },
+        {
+          stepNumber: 3,
+          title: 'Trình bày và thưởng thức',
+          instruction: 'Múc ra đĩa, trang trí thêm chút hành ngò tiêu ớt, dọn cùng cơm nóng.',
+          durationMinutes: 5,
+        },
+      ],
+      chefAdvice: 'Nêm nếm gia vị từ từ để vừa khẩu vị các thành viên trong gia đình bạn nhé!',
+    };
+  }
+
+  const cleanModel = config.model.trim().replace(/^models\//, '');
+  const prompt = `
+Bạn là Đầu Bếp AI chuyên nghiệp.
+Người dùng vừa chọn món: "${dishName}" cho ${peopleCount} người ăn.
+
+YÊU CẦU:
+Lên thực đơn chi tiết gồm nguyên liệu chuẩn xác (định lượng cho ${peopleCount} người, giá tiền chợ Việt Nam) và các bước nấu siêu ngon.
+
+TRẢ VỀ JSON DUY NHẤT CÓ CẤU TRÚC:
+{
+  "name": "${dishName}",
+  "tagline": "Khẩu hiệu ngắn gọn",
+  "mealType": "Bữa cơm gia đình",
+  "peopleCount": ${peopleCount},
+  "estimatedTotalCost": "Ước tính giá",
+  "estimatedCookingTime": "Thời gian nấu",
+  "difficulty": "Dễ" | "Trung bình" | "Cầu kỳ",
+  "nutritionOverview": {
+    "caloriesApprox": "~500 kcal / người",
+    "highlights": ["Dinh dưỡng", "Hấp dẫn", "Đưa cơm"]
+  },
+  "whyThisDish": "Lý do món này siêu ngon hôm nay",
+  "ingredients": [
+    {
+      "name": "Tên",
+      "amount": "Số lượng",
+      "estimatedPrice": "Giá",
+      "category": "meat_fish" | "veggie" | "spice_seasoning" | "staple"
+    }
+  ],
+  "steps": [
+    {
+      "stepNumber": 1,
+      "title": "Tiêu đề",
+      "instruction": "Chi tiết",
+      "durationMinutes": 5,
+      "chefTip": "Mẹo"
+    }
+  ],
+  "sideDishes": ["Ăn kèm..."],
+  "chefAdvice": "Lời khuyên"
+}
+`.trim();
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${config.apiKey.trim()}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 3000,
+        },
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const text = extractTextFromResponse(data);
+      if (text) {
+        return { ...parseJsonFromGemini(text), id: 'dish-' + Date.now() };
+      }
+    }
+  } catch (err) {
+    console.error('Gemini dish error:', err);
+  }
+
+  return SAMPLE_DISHES[0];
+}
+
+/**
+ * Intelligent fallback generator when Gemini API is not yet configured
+ */
+function generateFallbackSuggestion(pref: UserPreferences, extraNote?: string): SuggestedDish {
+  let chosen = SAMPLE_DISHES[0];
+
+  if (pref.cookingSpeed === 'fast_20m' || pref.foodCategory === 'quick_single') {
+    chosen = SAMPLE_DISHES[2]; // Gà chiên mắm nhanh gọn
+  } else if (pref.regionalFlavor === 'south' || pref.mainProtein === 'seafood') {
+    chosen = SAMPLE_DISHES[1]; // Cá lóc kho tộ miền Tây
+  }
+
+  const multiplier = Math.max(1, pref.peopleCount / chosen.peopleCount);
+  const adjustedIngredients = chosen.ingredients.map((ing) => {
+    return {
+      ...ing,
+      amount: ing.amount.replace(/\d+/g, (num) => String(Math.round(Number(num) * multiplier))),
+    };
+  });
+
+  return {
+    ...chosen,
+    id: 'dish-' + Date.now(),
+    peopleCount: pref.peopleCount,
+    whyThisDish: `${chosen.whyThisDish} ${extraNote || ''}`.trim(),
+    ingredients: adjustedIngredients,
+  };
+}
+
+/**
+ * Generate customized diet / weight loss meal plan with exact macros
+ */
+export async function suggestMealForDiet(pref: DietPreferences): Promise<SuggestedDish> {
+  const config = getStoredConfig();
+
+  const goalMap: Record<string, string> = {
+    deficit: 'Thâm hụt calo giảm mỡ cấp tốc (tập trung no lâu, ít calo, nhiều chất xơ)',
+    clean: 'Eat Clean chuẩn Việt (thực phẩm tự nhiên nguyên bản, ít gia vị nhân tạo, thải độc)',
+    fitness: 'Tăng cơ giảm mỡ Gymer (Hàm lượng Protein cực cao > 35g - 45g/bữa, nạc sạch)',
+    keto: 'Low-Carb / KETO (Cắt giảm tối đa tinh bột, tăng chất béo tốt và đạm sạch)',
+  };
+
+  if (!config.isConfigured || !config.apiKey) {
+    await new Promise((r) => setTimeout(r, 600));
+    return {
+      id: 'diet-' + Date.now(),
+      name: 'Ức Gà Áp Chảo Tiêu Đen + Cơm Gạo Lứt & Bông Cải Hấp',
+      tagline: 'Chuẩn Eat Clean thâm hụt calo, giàu protein giúp đốt mỡ và giữ cơ săn chắc!',
+      mealType: 'Bữa ăn giảm cân Eat Clean',
+      peopleCount: pref.peopleCount,
+      estimatedTotalCost: '50.000đ - 70.000đ',
+      estimatedCookingTime: '20 phút',
+      difficulty: 'Dễ',
+      nutritionOverview: {
+        caloriesApprox: '~385 kcal / khẩu phần',
+        protein: '38g',
+        carbs: '35g',
+        fat: '8g',
+        fiber: '7g',
+        highlights: ['Giàu Protein nạc', 'Tinh bột hấp thụ chậm (GI thấp)', 'Không dầu mỡ động vật'],
+      },
+      whyThisDish: `Món ăn được thiết kế riêng cho mục tiêu: ${goalMap[pref.targetGoal] || 'Giảm cân'}. Lượng calo khống chế dưới ${pref.calorieTarget}, tạo cảm giác no lâu mà không bị mệt mỏi hay mất cơ!`,
+      ingredients: [
+        { name: 'Ức gà phi lê nạc tươi', amount: `${pref.peopleCount * 160}g`, estimatedPrice: '30.000đ', category: 'meat_fish' },
+        { name: 'Gạo lứt hoặc khoai lang luộc', amount: `${pref.peopleCount * 1} chén nhỏ`, estimatedPrice: '10.000đ', category: 'staple' },
+        { name: 'Bông cải xanh (súp lơ) & cà rốt', amount: `${pref.peopleCount * 150}g`, estimatedPrice: '15.000đ', category: 'veggie' },
+        { name: 'Dầu oliu nguyên chất', amount: '1/2 thìa cà phê', estimatedPrice: '5.000đ', category: 'spice_seasoning' },
+        { name: 'Tiêu đen, tỏi băm, muối hồng, dầu hào', amount: 'Vừa đủ', estimatedPrice: '5.000đ', category: 'spice_seasoning' },
+      ],
+      steps: [
+        {
+          stepNumber: 1,
+          title: 'Ướp ức gà mềm mọng không bị khô bã',
+          instruction: 'Ức gà khía vát nhẹ, ướp cùng 1/2 thìa dầu hào, tỏi băm, nhiều tiêu đen đập dập và 1 xíu muối hồng trong 10 phút.',
+          durationMinutes: 10,
+          chefTip: 'Thoa 1 giọt dầu oliu lên ức gà trước khi ướp giúp giữ nước ngọt bên trong miếng thịt.'
+        },
+        {
+          stepNumber: 2,
+          title: 'Áp chảo lửa vừa chín tới',
+          instruction: 'Làm nóng chảo chống dính với 1/2 thìa dầu oliu, áp chảo mỗi mặt 4-5 phút đến khi mặt thịt vàng thơm xém cạnh, tắt bếp đậy vung 2 phút cho thịt mọng nước.',
+          durationMinutes: 9,
+        },
+        {
+          stepNumber: 3,
+          title: 'Hấp rau củ giữ trọn vitamin',
+          instruction: 'Bông cải xanh và cà rốt thái miếng vừa ăn, hấp cách thủy trong 5 phút. Vớt ra ngâm nước đá lạnh để rau giữ màu xanh giòn ngọt.',
+          durationMinutes: 5,
+        },
+      ],
+      sideDishes: ['Nước tương tỏi ớt ít muối', 'Trà xanh ấm thanh lọc mỡ thừa'],
+      chefAdvice: 'Nên ăn chậm nhai kỹ, ăn rau củ trước rồi đến thịt đạm và tinh bột sau cùng để giảm đột biến insulin tích mỡ!',
+    };
+  }
+
+  const cleanModel = config.model.trim().replace(/^models\//, '');
+  const prompt = `
+Bạn là Chuyên Gia Dinh Dưỡng & Đầu Bếp Eat Clean Chuyên Sâu.
+Người dùng đang trong chế độ ĂN KIÊNG / GIẢM CÂN / GIỮ DÁNG và cần bạn lên 1 bữa ăn khoa học:
+- Mục tiêu vóc dáng: ${goalMap[pref.targetGoal] || pref.targetGoal}
+- Mức calo mục tiêu: ${pref.calorieTarget} cho ${pref.peopleCount} người ăn
+- Nguồn tinh bột ưu tiên: ${pref.carbSource}
+- Nguồn đạm ưu tiên: ${pref.proteinChoice}
+- Cách chế biến: ${pref.cookingMethod}
+- Ghi chú: ${pref.notes || 'Không có'}
+
+NHIỆM VỤ:
+Lên thực đơn 1 bữa ăn giảm cân cực kỳ ngon miệng, dễ nấu theo phong cách ẩm thực Việt Nam (không nhàm chán như ức gà luộc nhạt toẹt).
+BẮT BUỘC tính toán chi tiết: Lượng Calo, Protein (g), Carbs (g), Fat (g), Fiber (g).
+
+TRẢ VỀ JSON DUY NHẤT VỚI CẤU TRÚC:
+{
+  "name": "Tên món ăn (Ví dụ: Cá Hồi Áp Chảo Sốt Chanh Leo + Khoai Lang Mật)",
+  "tagline": "Khẩu hiệu ngắn gọn về dinh dưỡng và đốt mỡ",
+  "mealType": "Bữa ăn giảm cân lành mạnh",
+  "peopleCount": ${pref.peopleCount},
+  "estimatedTotalCost": "Ước tính giá tiền",
+  "estimatedCookingTime": "Thời gian nấu (phút)",
+  "difficulty": "Dễ" | "Trung bình",
+  "nutritionOverview": {
+    "caloriesApprox": "~... kcal / khẩu phần",
+    "protein": "...g",
+    "carbs": "...g",
+    "fat": "...g",
+    "fiber": "...g",
+    "highlights": ["Giàu đạm nạc", "Tinh bột GI thấp", "Chất béo tốt"]
+  },
+  "whyThisDish": "Giải thích vì sao món này giúp đạt mục tiêu thâm hụt calo và no lâu",
+  "ingredients": [
+    {
+      "name": "Tên nguyên liệu",
+      "amount": "Định lượng rõ ràng (Ví dụ: 200g, 1 quả)",
+      "estimatedPrice": "Ước tính giá",
+      "category": "meat_fish" | "veggie" | "spice_seasoning" | "staple"
+    }
+  ],
+  "steps": [
+    {
+      "stepNumber": 1,
+      "title": "Tên bước",
+      "instruction": "Hướng dẫn chi tiết, lưu ý cách giảm dầu mỡ",
+      "durationMinutes": 5,
+      "chefTip": "Mẹo dinh dưỡng hoặc giữ độ mềm mọng"
+    }
+  ],
+  "sideDishes": ["Ăn kèm..."],
+  "chefAdvice": "Lời khuyên giảm cân của chuyên gia dinh dưỡng"
+}
+`.trim();
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${config.apiKey.trim()}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 3000,
+        },
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const text = extractTextFromResponse(data);
+      if (text) {
+        return { ...parseJsonFromGemini(text), id: 'diet-' + Date.now() };
+      }
+    }
+  } catch (err) {
+    console.error('Gemini Diet error:', err);
+  }
+
+  return generateFallbackSuggestion({
+    mealTime: 'lunch',
+    foodCategory: 'healthy_clean',
+    peopleCount: pref.peopleCount,
+    mainProtein: 'chicken',
+    budgetRange: 'medium',
+    cookingSpeed: 'fast_20m',
+    regionalFlavor: 'all',
+    weatherVibe: 'Giảm cân lành mạnh',
+    notes: 'Ưu tiên ít dầu mỡ',
+  });
+}
