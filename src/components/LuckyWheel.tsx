@@ -126,6 +126,8 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({ onSelectDish, isLoading 
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-100 text-orange-700 text-xs font-bold">
           <Dices className="w-3.5 h-3.5" />
           <span>Cứu Tinh Khi Quá Lười Nghĩ</span>
+          <span className="text-orange-400">·</span>
+          <span>© 2026 Copyright Trần Nguyên Khôi</span>
         </div>
         <h2 className="text-2xl sm:text-3xl font-extrabold font-heading text-gray-900">
           Vòng Quay Định Mệnh: Hôm Nay Ăn Gì?

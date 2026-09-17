@@ -8,7 +8,7 @@ interface ChefThinkingModalProps {
 const THINKING_STEPS = [
   {
     icon: '👨‍🍳',
-    title: 'Bếp trưởng AI đang nghiên cứu thực đơn...',
+    title: 'Bếp trưởng đang nghiên cứu thực đơn...',
     subtitle: 'Tham khảo kho tàng ẩm thực Việt Nam và phân tích sở thích của bạn.',
   },
   {
@@ -107,7 +107,7 @@ export const ChefThinkingModal = ({ isOpen }: ChefThinkingModalProps) => {
         <div className="space-y-2 mb-6 min-h-[75px] transition-all duration-300">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-100 text-orange-800 text-[11px] font-bold uppercase tracking-wider">
             <Sparkles className="w-3.5 h-3.5 text-orange-600 animate-spin" />
-            <span>Chuyên Gia Ẩm Thực AI Đang Suy Nghĩ</span>
+            <span>Chuyên Gia Ẩm Thực Đang Suy Nghĩ</span>
           </span>
 
           <h3 className="text-lg sm:text-xl font-extrabold text-gray-900 font-heading leading-snug">

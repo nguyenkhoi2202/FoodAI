@@ -98,12 +98,14 @@ export const WizardForm = ({ onSubmit, isLoading }: WizardFormProps) => {
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/20 backdrop-blur-sm text-xs font-semibold">
             <Sparkles className="w-3.5 h-3.5" />
             <span>AI Đưa Ra Quyết Định Thông Minh</span>
+            <span className="text-white/60">·</span>
+            <span>© 2026 Copyright Trần Nguyên Khôi</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold font-heading tracking-tight">
             Hôm Nay Ăn Gì? Hãy Để AI Quyết Định Giúp Bạn
           </h2>
           <p className="text-xs sm:text-sm text-orange-100">
-            5 câu hỏi thực tế giúp Gemini nắm bắt ngay bạn đang thèm gì, nấu cho ai và chi phí bao nhiêu!
+            5 câu hỏi thực tế giúp Gemini nắm bắt ngay bạn đang thèm gì, nấu cho ai và chi phí bao nhiêu! · <span className="text-white font-semibold">© 2026 Copyright Trần Nguyên Khôi</span>
           </p>
         </div>
 
@@ -483,7 +485,7 @@ export const WizardForm = ({ onSubmit, isLoading }: WizardFormProps) => {
         <div className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-xs text-gray-500 text-center sm:text-left flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-orange-500 flex-shrink-0" />
-            <span>AI sẽ tự động tính toán nguyên liệu và lên thực đơn hoàn hảo cho bạn.</span>
+            <span>AI sẽ tự động tính toán nguyên liệu và lên thực đơn hoàn hảo cho bạn · <strong>© 2026 Copyright Trần Nguyên Khôi</strong></span>
           </div>
 
           <div className="flex items-center gap-3 w-full sm:w-auto">

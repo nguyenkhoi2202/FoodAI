@@ -48,7 +48,7 @@ export const MealResult: React.FC<MealResultProps> = ({
         (item, idx) => `${idx + 1}. ${item.name} (${item.amount}) ~ ${item.estimatedPrice}`
       ),
       '--------------------------------',
-      `💡 Gợi ý bởi: Hôm Nay Ăn Gì? - AI Gemini Assistant`,
+      `💡 Gợi ý bởi: Hôm Nay Ăn Gì? - AI Gemini Assistant · © 2026 Copyright Trần Nguyên Khôi`,
     ];
 
     navigator.clipboard.writeText(lines.join('\n')).then(() => {
@@ -66,6 +66,8 @@ export const MealResult: React.FC<MealResultProps> = ({
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 backdrop-blur-sm text-xs font-bold text-orange-100">
               <ChefHat className="w-3.5 h-3.5" />
               <span>Đầu Bếp AI Đề Xuất Cho Bạn</span>
+              <span className="text-white/60">·</span>
+              <span>© 2026 Copyright Trần Nguyên Khôi</span>
             </div>
             <h2 className="text-2xl sm:text-4xl font-extrabold font-heading tracking-tight leading-tight">
               {dish.name}

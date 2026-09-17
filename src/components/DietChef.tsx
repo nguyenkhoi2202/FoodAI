@@ -78,6 +78,8 @@ export const DietChef = ({ onGenerateDiet, isLoading }: DietChefProps) => {
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/20 backdrop-blur-sm text-xs font-semibold">
             <Salad className="w-3.5 h-3.5" />
             <span>Chuyên Mục Ăn Kiêng &amp; Giảm Cân Khoa Học</span>
+            <span className="text-white/60">·</span>
+            <span>© 2026 Copyright Trần Nguyên Khôi</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold font-heading tracking-tight">
             Thực Đơn Giảm Cân &amp; Eat Clean Chuẩn Vị Việt

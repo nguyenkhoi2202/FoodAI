@@ -200,7 +200,7 @@ export const AdminPage = ({
                 Cổng Quản Trị Hệ Thống
               </h2>
               <p className="text-xs text-gray-400 mt-1">
-                Khu vực dành riêng cho Quản trị viên (/config) để cấu hình Google AI
+                Khu vực dành riêng cho Quản trị viên (/config) · <strong className="text-orange-400">© 2026 Copyright Trần Nguyên Khôi</strong>
               </p>
             </div>
           </div>
@@ -264,10 +264,13 @@ export const AdminPage = ({
               <KeyRound className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-lg font-extrabold text-white">Quản Trị Hệ Thống AI</span>
                 <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md bg-orange-500/20 text-orange-400 border border-orange-500/30">
                   Admin Portal
+                </span>
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-gray-800 text-gray-300 border border-gray-700">
+                  © 2026 Copyright Trần Nguyên Khôi
                 </span>
               </div>
               <p className="text-xs text-gray-400">Đường dẫn riêng tư: /config</p>

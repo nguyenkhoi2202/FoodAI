@@ -1,10 +1,11 @@
-import { ChefHat, Bookmark, Sparkles, Dices, Refrigerator, UtensilsCrossed, Salad } from 'lucide-react';
+import { ChefHat, Bookmark, Sparkles, Dices, Refrigerator, UtensilsCrossed, Salad, Coffee } from 'lucide-react';
 
 interface HeaderProps {
   savedCount: number;
   activeTab: 'wizard' | 'diet' | 'wheel' | 'fridge' | 'trio';
   setActiveTab: (tab: 'wizard' | 'diet' | 'wheel' | 'fridge' | 'trio') => void;
   onOpenFavorites: () => void;
+  onOpenDonate?: () => void;
 }
 
 export const Header = ({
@@ -12,6 +13,7 @@ export const Header = ({
   activeTab,
   setActiveTab,
   onOpenFavorites,
+  onOpenDonate,
 }: HeaderProps) => {
   return (
     <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-orange-100 shadow-sm">
@@ -26,22 +28,37 @@ export const Header = ({
               <ChefHat className="w-6 h-6 sm:w-7 sm:h-7" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 font-heading">
                   Hôm Nay <span className="text-orange-600">Ăn Gì?</span>
                 </span>
                 <span className="hidden sm:inline-block px-2 py-0.5 text-xs font-semibold bg-orange-100 text-orange-700 rounded-full border border-orange-200">
                   AI Gemini Assistant
                 </span>
+                <span className="hidden md:inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-bold bg-amber-50 text-amber-800 rounded-full border border-amber-200 shadow-xs">
+                  © 2026 Copyright Trần Nguyên Khôi
+                </span>
               </div>
               <p className="text-xs text-gray-500 hidden sm:block">
-                Trợ lý ẩm thực gia đình · Chọn món ngon, vừa túi tiền &amp; không còn phân vân
+                Trợ lý ẩm thực gia đình · © 2026 Copyright Trần Nguyên Khôi · Chọn món ngon, vừa túi tiền
               </p>
             </div>
           </div>
 
           {/* Right Action buttons */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Donate button */}
+            {onOpenDonate && (
+              <button
+                onClick={onOpenDonate}
+                className="px-3 py-2 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 border border-orange-200/80 transition-all flex items-center gap-1.5 text-amber-900 text-sm font-bold shadow-xs cursor-pointer"
+                title="Ủng hộ dự án · © 2026 Copyright Trần Nguyên Khôi"
+              >
+                <Coffee className="w-4 h-4 text-orange-600" />
+                <span className="hidden sm:inline">Ủng Hộ ☕</span>
+              </button>
+            )}
+
             {/* Saved recipes button */}
             <button
               onClick={onOpenFavorites}

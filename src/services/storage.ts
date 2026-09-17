@@ -26,9 +26,9 @@ export const getStoredConfig = (): AppConfig => {
     let model = parsed.model || DEFAULT_CONFIG.model || 'gemini-3.1-flash-lite';
     // Auto-migrate models that Google discontinued for this API version
     if (
-      model === 'gemini-1.5-flash' ||
-      model === 'gemini-1.5-pro' ||
-      model === 'gemini-2.0-flash' ||
+      model === 'gemini-3.6-flash' ||
+      model === 'gemini-3.7-pro' ||
+      model === 'gemini-3.8-flash' ||
       model === 'gemini-2.5-flash'
     ) {
       model = 'gemini-3.1-flash-lite';

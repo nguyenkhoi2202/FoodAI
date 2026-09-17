@@ -14,6 +14,8 @@ export const TrioCombos: React.FC<TrioCombosProps> = ({ onSelectCombo, isLoading
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-bold">
           <UtensilsCrossed className="w-3.5 h-3.5" />
           <span>Văn Hóa Ẩm Thực Cơm Nhà</span>
+          <span className="text-amber-600">·</span>
+          <span>© 2026 Copyright Trần Nguyên Khôi</span>
         </div>
         <h2 className="text-2xl sm:text-3xl font-extrabold font-heading text-gray-900">
           Mâm Cơm 3 Món Chuẩn Vị Việt

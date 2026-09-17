@@ -10,6 +10,7 @@ import { AdminPage } from './components/AdminPage';
 import { FavoritesModal } from './components/FavoritesModal';
 import { ChefThinkingModal } from './components/ChefThinkingModal';
 import { ChefErrorCard } from './components/ChefErrorCard';
+import { DonateModal } from './components/DonateModal';
 import type {
   SuggestedDish,
   UserPreferences,
@@ -43,6 +44,8 @@ export function App() {
   const [config, setConfig] = useState<AppConfig>(getStoredConfig());
   const [isFavoritesOpen, setIsFavoritesOpen] = useState<boolean>(false);
   const [savedDishes, setSavedDishes] = useState<SavedDish[]>(getSavedDishes());
+  const [isDonateOpen, setIsDonateOpen] = useState<boolean>(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
   const [currentDish, setCurrentDish] = useState<SuggestedDish | null>(SAMPLE_DISHES[0]);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -91,8 +94,8 @@ export function App() {
     scrollToResult();
   };
 
-  // Handler for Wizard form submission
-  const handleWizardSubmit = async (prefs: UserPreferences) => {
+  // Core execution of Wizard meal suggestion
+  const executeWizardSubmit = async (prefs: UserPreferences) => {
     setLastPreferences(prefs);
     setLastDietPreferences(null);
     setApiError(null);
@@ -105,6 +108,37 @@ export function App() {
       handleApiError(error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Handler for Wizard form submission (opens Donate popup first)
+  const handleWizardSubmit = (prefs: UserPreferences) => {
+    setPendingAction(() => () => executeWizardSubmit(prefs));
+    setIsDonateOpen(true);
+  };
+
+  // Donate popup actions: User can accept or decline, both continue to meal decision
+  const handleDonateConfirm = () => {
+    setIsDonateOpen(false);
+    if (pendingAction) {
+      pendingAction();
+      setPendingAction(null);
+    }
+  };
+
+  const handleDonateDecline = () => {
+    setIsDonateOpen(false);
+    if (pendingAction) {
+      pendingAction();
+      setPendingAction(null);
+    }
+  };
+
+  const handleDonateClose = () => {
+    setIsDonateOpen(false);
+    if (pendingAction) {
+      pendingAction();
+      setPendingAction(null);
     }
   };
 
@@ -131,9 +165,9 @@ export function App() {
     if (lastDietPreferences) {
       handleDietSubmit(lastDietPreferences);
     } else if (lastPreferences) {
-      handleWizardSubmit(lastPreferences);
+      executeWizardSubmit(lastPreferences);
     } else {
-      handleWizardSubmit({
+      executeWizardSubmit({
         mealTime: 'dinner',
         foodCategory: 'family_rice',
         peopleCount: 4,
@@ -231,6 +265,10 @@ export function App() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onOpenFavorites={() => setIsFavoritesOpen(true)}
+        onOpenDonate={() => {
+          setPendingAction(null);
+          setIsDonateOpen(true);
+        }}
       />
 
       {/* Main Container */}
@@ -315,17 +353,32 @@ export function App() {
         </div>
       </main>
 
-      {/* Clean User Footer */}
-      <footer className="mt-auto border-t border-orange-100 bg-white/70 py-6">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 text-center space-y-2">
-          <p className="text-sm font-bold text-gray-700 flex items-center justify-center gap-2">
+      {/* Clean User Footer with Author Signature */}
+      <footer className="mt-auto border-t border-orange-100 bg-white/80 backdrop-blur-sm py-8">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 text-center space-y-3">
+          <div className="flex flex-wrap items-center justify-center gap-2 text-sm font-bold text-gray-800">
             <span>Hôm Nay Ăn Gì?</span>
-            <span>·</span>
-            <span className="text-orange-600">Trợ Lý Ẩm Thực Thông Minh Gia Đình</span>
+            <span className="text-gray-300">·</span>
+            <span className="text-orange-600 font-heading">Trợ Lý Ẩm Thực Thông Minh Gia Đình</span>
+            <span className="text-gray-300">·</span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-orange-100 text-orange-900 text-xs font-extrabold border border-orange-200">
+              © 2026 Copyright Trần Nguyên Khôi
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 max-w-xl mx-auto">
+            Bản quyền © {new Date().getFullYear()} sáng tạo bởi <strong>Trần Nguyên Khôi</strong>. Giải cứu các gia đình và bạn trẻ khỏi câu hỏi nan giải "Trưa nay ăn gì? Tối nay nấu gì?".
           </p>
-          <p className="text-xs text-gray-400">
-            Giải cứu các gia đình và bạn trẻ khỏi câu hỏi nan giải "Trưa nay ăn gì? Tối nay nấu gì?".
-          </p>
+          <div className="flex items-center justify-center gap-3 pt-1">
+            <button
+              onClick={() => {
+                setPendingAction(null);
+                setIsDonateOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 text-amber-900 text-xs font-bold border border-orange-200 transition-all shadow-xs cursor-pointer"
+            >
+              ☕ Mời tác giả Trần Nguyên Khôi 1 ly cà phê
+            </button>
+          </div>
         </div>
       </footer>
 
@@ -343,6 +396,14 @@ export function App() {
 
       {/* Global Animated Chef Thinking Modal */}
       <ChefThinkingModal isOpen={isLoading} />
+
+      {/* Donate Modal for Author Tran Nguyen Khoi */}
+      <DonateModal
+        isOpen={isDonateOpen}
+        onClose={handleDonateClose}
+        onConfirm={handleDonateConfirm}
+        onDecline={handleDonateDecline}
+      />
     </div>
   );
 }

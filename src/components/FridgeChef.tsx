@@ -50,6 +50,8 @@ export const FridgeChef: React.FC<FridgeChefProps> = ({ onGenerate, isLoading })
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
           <Refrigerator className="w-3.5 h-3.5" />
           <span>Dọn Tủ Lạnh Thông Minh - Zero Waste</span>
+          <span className="text-emerald-500">·</span>
+          <span>© 2026 Copyright Trần Nguyên Khôi</span>
         </div>
         <h2 className="text-2xl sm:text-3xl font-extrabold font-heading text-gray-900">
           Tủ Lạnh Còn Gì Nấu Nấy
