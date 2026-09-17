@@ -94,6 +94,10 @@ export function App() {
     scrollToResult();
   };
 
+  // =========================================================================
+  // CORE AI MEAL GENERATION EXECUTORS
+  // =========================================================================
+
   // Core execution of Wizard meal suggestion
   const executeWizardSubmit = async (prefs: UserPreferences) => {
     setLastPreferences(prefs);
@@ -111,10 +115,122 @@ export function App() {
     }
   };
 
-  // Handler for Wizard form submission (opens Donate popup first)
-  const handleWizardSubmit = (prefs: UserPreferences) => {
-    setPendingAction(() => () => executeWizardSubmit(prefs));
+  // Core execution of Diet / Weight loss form submission
+  const executeDietSubmit = async (dietPrefs: DietPreferences) => {
+    setLastDietPreferences(dietPrefs);
+    setLastPreferences(null);
+    setApiError(null);
+    setIsLoading(true);
+    try {
+      const result = await suggestMealForDiet(dietPrefs);
+      setCurrentDish(result);
+      scrollToResult();
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Core execution of Lucky Wheel dish selection
+  const executeSelectWheelDish = async (dishName: string) => {
+    setApiError(null);
+    setIsLoading(true);
+    try {
+      const result = await suggestRecipeForSpecificDish(dishName, 4);
+      setCurrentDish(result);
+      scrollToResult();
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Core execution of Fridge Chef submission
+  const executeFridgeSubmit = async (ingredients: string[], peopleCount: number) => {
+    setApiError(null);
+    setIsLoading(true);
+    try {
+      const result = await suggestMealFromFridge(ingredients, peopleCount);
+      setCurrentDish(result);
+      scrollToResult();
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Core execution of Trio Combos preset selection
+  const executeTrioSelect = async (comboTitle: string) => {
+    setApiError(null);
+    setIsLoading(true);
+    try {
+      const result = await suggestRecipeForSpecificDish(comboTitle, 4);
+      setCurrentDish(result);
+      scrollToResult();
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Core execution of Reroll
+  const executeReroll = async () => {
+    setApiError(null);
+    if (lastDietPreferences) {
+      executeDietSubmit(lastDietPreferences);
+    } else if (lastPreferences) {
+      executeWizardSubmit(lastPreferences);
+    } else {
+      executeWizardSubmit({
+        mealTime: 'dinner',
+        foodCategory: 'family_rice',
+        peopleCount: 4,
+        mainProtein: 'any',
+        budgetRange: 'medium',
+        cookingSpeed: 'normal_35m',
+        regionalFlavor: 'all',
+        weatherVibe: 'Đậm đà, đưa cơm',
+        notes: '',
+      });
+    }
+  };
+
+  // =========================================================================
+  // DONATE POPUP INTERCEPTOR (Triggered on any AI meal decision)
+  // =========================================================================
+
+  const triggerWithDonate = (action: () => void) => {
+    setPendingAction(() => action);
     setIsDonateOpen(true);
+  };
+
+  // Form & Tab Handlers with Donate popup interception
+  const handleWizardSubmit = (prefs: UserPreferences) => {
+    triggerWithDonate(() => executeWizardSubmit(prefs));
+  };
+
+  const handleDietSubmit = (dietPrefs: DietPreferences) => {
+    triggerWithDonate(() => executeDietSubmit(dietPrefs));
+  };
+
+  const handleSelectWheelDish = (dishName: string) => {
+    triggerWithDonate(() => executeSelectWheelDish(dishName));
+  };
+
+  const handleFridgeSubmit = (ingredients: string[], peopleCount: number) => {
+    triggerWithDonate(() => executeFridgeSubmit(ingredients, peopleCount));
+  };
+
+  const handleTrioSelect = (comboTitle: string) => {
+    triggerWithDonate(() => executeTrioSelect(comboTitle));
+  };
+
+  const handleReroll = () => {
+    triggerWithDonate(() => executeReroll());
   };
 
   // Donate popup actions: User can accept or decline, both continue to meal decision
@@ -139,90 +255,6 @@ export function App() {
     if (pendingAction) {
       pendingAction();
       setPendingAction(null);
-    }
-  };
-
-  // Handler for Diet / Weight loss form submission
-  const handleDietSubmit = async (dietPrefs: DietPreferences) => {
-    setLastDietPreferences(dietPrefs);
-    setLastPreferences(null);
-    setApiError(null);
-    setIsLoading(true);
-    try {
-      const result = await suggestMealForDiet(dietPrefs);
-      setCurrentDish(result);
-      scrollToResult();
-    } catch (error) {
-      handleApiError(error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Handler for Reroll button
-  const handleReroll = async () => {
-    setApiError(null);
-    if (lastDietPreferences) {
-      handleDietSubmit(lastDietPreferences);
-    } else if (lastPreferences) {
-      executeWizardSubmit(lastPreferences);
-    } else {
-      executeWizardSubmit({
-        mealTime: 'dinner',
-        foodCategory: 'family_rice',
-        peopleCount: 4,
-        mainProtein: 'any',
-        budgetRange: 'medium',
-        cookingSpeed: 'normal_35m',
-        regionalFlavor: 'all',
-        weatherVibe: 'Đậm đà, đưa cơm',
-        notes: '',
-      });
-    }
-  };
-
-  // Handler for Lucky Wheel dish selection
-  const handleSelectWheelDish = async (dishName: string) => {
-    setApiError(null);
-    setIsLoading(true);
-    try {
-      const result = await suggestRecipeForSpecificDish(dishName, 4);
-      setCurrentDish(result);
-      scrollToResult();
-    } catch (error) {
-      handleApiError(error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Handler for Fridge Chef submission
-  const handleFridgeSubmit = async (ingredients: string[], peopleCount: number) => {
-    setApiError(null);
-    setIsLoading(true);
-    try {
-      const result = await suggestMealFromFridge(ingredients, peopleCount);
-      setCurrentDish(result);
-      scrollToResult();
-    } catch (error) {
-      handleApiError(error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Handler for Trio Combos preset selection
-  const handleTrioSelect = async (comboTitle: string) => {
-    setApiError(null);
-    setIsLoading(true);
-    try {
-      const result = await suggestRecipeForSpecificDish(comboTitle, 4);
-      setCurrentDish(result);
-      scrollToResult();
-    } catch (error) {
-      handleApiError(error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
